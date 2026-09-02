@@ -18,13 +18,14 @@ async function nextActivityNo(tab) {
   });
 }
 
-async function addTask({ tab, title, dueDate }) {
+async function addTask({ tab, title, dueDate, createdBy }) {
   const activityNo = await nextActivityNo(tab);
   const doc = {
     tab,
     activityNo,
     title,
     dueDate: dueDate || null,
+    createdBy: createdBy || null,
     status: 'open',
     createdAt: Date.now(),
     completedAt: null,

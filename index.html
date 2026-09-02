@@ -368,6 +368,10 @@
             <option value="heavy">Heavy</option>
           </select>
         </div>
+        <div class="field">
+          <label>Created by <span style="opacity:.6;">(initials)</span></label>
+          <input type="text" id="detailCreatedByInput" maxlength="3" placeholder="e.g. RAJ" style="text-transform:uppercase;">
+        </div>
         <button class="btn secondary" id="saveDetailBtn">Save changes</button>
       </div>
 
@@ -489,8 +493,12 @@
       <input type="text" id="addTaskTitleInput" placeholder="e.g. Reply to client email">
     </div>
     <div class="field">
-      <label>Due date <span style="opacity:.6;">(optional)</span></label>
+      <label>Due date</label>
       <input type="date" id="addTaskDueInput">
+    </div>
+    <div class="field">
+      <label>Created by <span style="opacity:.6;">(initials)</span></label>
+      <input type="text" id="addTaskCreatedByInput" maxlength="3" placeholder="e.g. RAJ" style="text-transform:uppercase;">
     </div>
     <div id="addTaskError" class="lock-error" style="text-align:left; margin-top:0;"></div>
     <div style="display:flex; gap:10px;">

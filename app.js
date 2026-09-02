@@ -305,10 +305,11 @@ function renderTabList(tab) {
 function taskCardHtml(t) {
   const overdueClass = isOverdue(t) ? 'overdue' : '';
   const completedClass = t.status === 'completed' ? 'completed' : '';
+  const byTag = t.createdBy ? ` &middot; ${escapeHtml(t.createdBy)}` : '';
   return `
     <div class="task-card ${completedClass}" data-task-id="${t.id}">
       <div class="task-card-main">
-        <div class="task-card-no">${t.activityNo}</div>
+        <div class="task-card-no">${t.activityNo}${byTag}</div>
         <div class="task-card-title">${escapeHtml(t.title)}</div>
         <div class="task-card-due ${overdueClass}">${formatDate(t.dueDate)}</div>
       </div>
@@ -371,6 +372,7 @@ function openTaskDetail(id) {
   document.getElementById('detailTitleInput').value = t.title;
   document.getElementById('detailDueInput').value = t.dueDate || '';
   document.getElementById('detailGroupInput').value = t.tab;
+  document.getElementById('detailCreatedByInput').value = t.createdBy || '';
 
   const toggleBtn = document.getElementById('toggleCompleteBtn');
   toggleBtn.textContent = t.status === 'completed' ? 'Reopen task' : 'Mark complete';
@@ -391,8 +393,9 @@ document.getElementById('saveDetailBtn').addEventListener('click', async () => {
   const title = document.getElementById('detailTitleInput').value.trim();
   const dueDate = document.getElementById('detailDueInput').value || null;
   const tab = document.getElementById('detailGroupInput').value;
+  const createdBy = document.getElementById('detailCreatedByInput').value.trim().toUpperCase().slice(0, 3);
   if (!title) return;
-  await updateTask(currentTaskId, { title, dueDate, tab });
+  await updateTask(currentTaskId, { title, dueDate, tab, createdBy });
 });
 
 document.getElementById('addNoteBtn').addEventListener('click', async () => {
@@ -422,7 +425,8 @@ document.querySelectorAll('[data-add-task]').forEach(btn => {
   btn.addEventListener('click', () => {
     addTaskTab = btn.dataset.addTask;
     document.getElementById('addTaskTitleInput').value = '';
-    document.getElementById('addTaskDueInput').value = '';
+    document.getElementById('addTaskDueInput').value = todayStr();
+    document.getElementById('addTaskCreatedByInput').value = '';
     document.getElementById('addTaskError').textContent = '';
     addTaskModal.classList.remove('hidden');
   });
@@ -431,11 +435,12 @@ document.getElementById('cancelAddTask').addEventListener('click', () => addTask
 document.getElementById('saveAddTask').addEventListener('click', async () => {
   const title = document.getElementById('addTaskTitleInput').value.trim();
   const dueDate = document.getElementById('addTaskDueInput').value || null;
+  const createdBy = document.getElementById('addTaskCreatedByInput').value.trim().toUpperCase().slice(0, 3);
   if (!title) {
     document.getElementById('addTaskError').textContent = 'Enter a title';
     return;
   }
-  await addTask({ tab: addTaskTab, title, dueDate });
+  await addTask({ tab: addTaskTab, title, dueDate, createdBy });
   addTaskModal.classList.add('hidden');
 });
 
