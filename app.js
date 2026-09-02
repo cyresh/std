@@ -1,9 +1,13 @@
 // ================= State =================
 let allTasks = [];
-let currentTab = 'home';      // home | simple | medium | heavy | settings | taskDetail
-let previousTabView = 'home'; // where "back" from task detail returns to
+let currentTab = 'home';
+let previousTabView = 'home';
 let currentTaskId = null;
 let completedCollapsed = { simple: false, medium: false, heavy: false };
+let creatorNames = ['Name 1', 'Name 2', 'Name 3'];
+let addTaskSelectedCreator = null;
+let editSelectedCreator = null;
+let calYear, calMonth;
 
 // ================= Utilities =================
 function todayStr() {
@@ -27,6 +31,10 @@ function isOverdue(task) {
   return task.status === 'open' && task.dueDate && task.dueDate < todayStr();
 }
 
+function capitalize(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
 function simpleHash(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -35,12 +43,17 @@ function simpleHash(str) {
   return String(hash);
 }
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 // ================= Theme =================
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('std_theme', theme);
   document.getElementById('lightThemeToggle').checked = theme === 'light';
-  document.getElementById('themeToggleBtn').innerHTML = theme === 'light' ? '&#9790;' : '&#9788;';
 }
 
 function initTheme() {
@@ -48,23 +61,19 @@ function initTheme() {
   applyTheme(saved);
 }
 
-document.getElementById('themeToggleBtn').addEventListener('click', () => {
-  const current = document.documentElement.getAttribute('data-theme');
-  applyTheme(current === 'light' ? 'dark' : 'light');
-});
-
 document.getElementById('lightThemeToggle').addEventListener('change', (e) => {
   applyTheme(e.target.checked ? 'light' : 'dark');
 });
 
-// ================= PIN lock =================
+// ================= PIN lock (global / shared across devices) =================
 const lockscreen = document.getElementById('lockscreen');
 const pinDots = document.getElementById('pinDots');
 const lockTitle = document.getElementById('lockTitle');
 const lockError = document.getElementById('lockError');
-let lockMode = 'verify'; // 'setup1' | 'setup2' | 'verify'
+let lockMode = 'loading'; // 'loading' | 'setup1' | 'setup2' | 'verify'
 let enteredDigits = '';
 let firstSetupPin = '';
+let globalPinHash = null;
 
 function renderPinDots(container, count) {
   const dots = container.querySelectorAll('.pin-dot');
@@ -76,37 +85,47 @@ function shakeDots(container) {
   setTimeout(() => container.classList.remove('shake'), 350);
 }
 
-function startLockFlow() {
-  const storedHash = localStorage.getItem('std_pin_hash');
+function resetPinEntry() {
+  enteredDigits = '';
+  lockError.textContent = '';
+  renderPinDots(pinDots, 0);
+}
+
+async function startLockFlow() {
+  lockMode = 'loading';
+  lockTitle.textContent = 'Loading...';
+  resetPinEntry();
+  lockscreen.classList.remove('hidden');
+
+  let sec;
+  try {
+    sec = await getSecurityDoc();
+  } catch (err) {
+    lockTitle.textContent = 'Connection error';
+    lockError.textContent = 'Check your internet connection and reload.';
+    return;
+  }
+  globalPinHash = sec ? sec.pinHash : null;
+
   const lastUnlock = localStorage.getItem('std_last_unlock_date');
 
-  if (!storedHash) {
+  if (!globalPinHash) {
     lockMode = 'setup1';
-    lockTitle.textContent = 'Set a PIN';
-    showLockscreen();
+    lockTitle.textContent = 'Set a shared PIN';
+    resetPinEntry();
     return;
   }
   if (lastUnlock === todayStr()) {
-    hideLockscreen();
+    lockscreen.classList.add('hidden');
     return;
   }
   lockMode = 'verify';
   lockTitle.textContent = 'Enter PIN';
-  showLockscreen();
-}
-
-function showLockscreen() {
-  enteredDigits = '';
-  lockError.textContent = '';
-  renderPinDots(pinDots, 0);
-  lockscreen.classList.remove('hidden');
-}
-
-function hideLockscreen() {
-  lockscreen.classList.add('hidden');
+  resetPinEntry();
 }
 
 document.getElementById('keypad').addEventListener('click', (e) => {
+  if (lockMode === 'loading') return;
   const btn = e.target.closest('.key');
   if (!btn || btn.classList.contains('empty')) return;
   const k = btn.dataset.k;
@@ -125,7 +144,7 @@ document.getElementById('keypad').addEventListener('click', (e) => {
   }
 });
 
-function handlePinComplete() {
+async function handlePinComplete() {
   if (lockMode === 'setup1') {
     firstSetupPin = enteredDigits;
     lockMode = 'setup2';
@@ -136,23 +155,30 @@ function handlePinComplete() {
   }
   if (lockMode === 'setup2') {
     if (enteredDigits === firstSetupPin) {
-      localStorage.setItem('std_pin_hash', simpleHash(enteredDigits));
-      localStorage.setItem('std_last_unlock_date', todayStr());
-      hideLockscreen();
+      const hash = simpleHash(enteredDigits);
+      try {
+        await setGlobalPinHash(hash);
+        globalPinHash = hash;
+        localStorage.setItem('std_last_unlock_date', todayStr());
+        lockscreen.classList.add('hidden');
+      } catch (err) {
+        lockError.textContent = 'Could not save PIN — check connection.';
+        shakeDots(pinDots);
+      }
     } else {
       lockError.textContent = "PINs didn't match — try again";
       shakeDots(pinDots);
       lockMode = 'setup1';
-      lockTitle.textContent = 'Set a PIN';
+      lockTitle.textContent = 'Set a shared PIN';
       enteredDigits = '';
       setTimeout(() => renderPinDots(pinDots, 0), 350);
     }
     return;
   }
   // verify
-  if (simpleHash(enteredDigits) === localStorage.getItem('std_pin_hash')) {
+  if (simpleHash(enteredDigits) === globalPinHash) {
     localStorage.setItem('std_last_unlock_date', todayStr());
-    hideLockscreen();
+    lockscreen.classList.add('hidden');
   } else {
     lockError.textContent = 'Incorrect PIN';
     shakeDots(pinDots);
@@ -161,7 +187,7 @@ function handlePinComplete() {
   }
 }
 
-// ---- Change PIN modal ----
+// ---- Change PIN modal (writes the shared/global PIN) ----
 const changePinModal = document.getElementById('changePinModal');
 const newPinDots = document.getElementById('newPinDots');
 const changePinError = document.getElementById('changePinError');
@@ -180,7 +206,7 @@ document.getElementById('changePinLink').addEventListener('click', () => {
 document.getElementById('cancelChangePin').addEventListener('click', () => {
   changePinModal.classList.add('hidden');
 });
-document.getElementById('changeKeypad').addEventListener('click', (e) => {
+document.getElementById('changeKeypad').addEventListener('click', async (e) => {
   const btn = e.target.closest('.key');
   if (!btn || btn.classList.contains('empty')) return;
   const k = btn.dataset.k;
@@ -200,8 +226,15 @@ document.getElementById('changeKeypad').addEventListener('click', (e) => {
       setTimeout(() => renderPinDots(newPinDots, 0), 150);
     } else {
       if (changePinDigits === changePinFirst) {
-        localStorage.setItem('std_pin_hash', simpleHash(changePinDigits));
-        changePinModal.classList.add('hidden');
+        const hash = simpleHash(changePinDigits);
+        try {
+          await setGlobalPinHash(hash);
+          globalPinHash = hash;
+          changePinModal.classList.add('hidden');
+        } catch (err) {
+          changePinError.textContent = 'Could not save — check connection.';
+          shakeDots(newPinDots);
+        }
       } else {
         changePinError.textContent = "PINs didn't match — try again";
         shakeDots(newPinDots);
@@ -217,31 +250,33 @@ document.getElementById('changeKeypad').addEventListener('click', (e) => {
 const viewTitleEl = document.getElementById('viewTitle');
 const appEl = document.getElementById('app');
 const backBtn = document.getElementById('backBtn');
-
-const TAB_LABELS = { home: 'Std', simple: 'Simple', medium: 'Medium', heavy: 'Heavy', settings: 'Settings' };
+const SUB_VIEWS = ['taskDetail', 'settings', 'calendar'];
+const TAB_LABELS = { home: 'Std', simple: 'Simple', medium: 'Medium', heavy: 'Heavy', settings: 'Settings', calendar: 'Calendar' };
 
 function goToView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.navbtn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
 
-  if (name === 'taskDetail') {
-    document.getElementById('view-taskDetail').classList.add('active');
+  if (SUB_VIEWS.includes(name)) {
     backBtn.style.visibility = 'visible';
-    viewTitleEl.textContent = 'Task';
+    viewTitleEl.textContent = name === 'taskDetail' ? 'Task' : (TAB_LABELS[name] || 'Std');
+    currentTab = name;
   } else {
-    document.getElementById('view-' + name).classList.add('active');
     const navBtn = document.querySelector(`.navbtn[data-nav="${name}"]`);
     if (navBtn) navBtn.classList.add('active');
     backBtn.style.visibility = 'hidden';
     viewTitleEl.textContent = TAB_LABELS[name] || 'Std';
     currentTab = name;
-    if (['simple', 'medium', 'heavy'].includes(name)) previousTabView = name;
+    previousTabView = name;
   }
 
   appEl.className = 'tab-' + (name === 'taskDetail' ? (currentTaskFallbackTab() || 'home') : name);
 
   if (name === 'home') renderHome();
   if (['simple', 'medium', 'heavy'].includes(name)) renderTabList(name);
+  if (name === 'calendar') renderCalendar();
+  if (name === 'settings') populateSettingsFields();
 }
 
 function currentTaskFallbackTab() {
@@ -257,6 +292,38 @@ backBtn.addEventListener('click', () => goToView(previousTabView));
 
 document.querySelectorAll('[data-goto-tab]').forEach(el => {
   el.addEventListener('click', () => goToView(el.dataset.gotoTab));
+});
+
+document.getElementById('calendarBtn').addEventListener('click', () => {
+  const now = new Date();
+  calYear = now.getFullYear();
+  calMonth = now.getMonth();
+  goToView('calendar');
+});
+document.getElementById('settingsBtn').addEventListener('click', () => goToView('settings'));
+
+// ================= Creator chips (shared render helper) =================
+function renderCreatorChips(container, selected, onSelect) {
+  container.innerHTML = creatorNames.map(name =>
+    `<button type="button" class="chip ${name === selected ? 'selected' : ''}" data-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`
+  ).join('');
+  container.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => onSelect(chip.dataset.name));
+  });
+}
+
+// ================= Settings =================
+function populateSettingsFields() {
+  document.getElementById('creatorName1Input').value = creatorNames[0] || '';
+  document.getElementById('creatorName2Input').value = creatorNames[1] || '';
+  document.getElementById('creatorName3Input').value = creatorNames[2] || '';
+}
+
+document.getElementById('saveCreatorNamesBtn').addEventListener('click', async () => {
+  const n1 = document.getElementById('creatorName1Input').value.trim() || 'Name 1';
+  const n2 = document.getElementById('creatorName2Input').value.trim() || 'Name 2';
+  const n3 = document.getElementById('creatorName3Input').value.trim() || 'Name 3';
+  await setCreatorNames([n1, n2, n3]);
 });
 
 // ================= Rendering: tab lists =================
@@ -317,12 +384,6 @@ function taskCardHtml(t) {
     </div>`;
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
 // ================= Rendering: home dashboard =================
 function renderHome() {
   const open = allTasks.filter(t => t.status === 'open');
@@ -361,7 +422,69 @@ function renderHome() {
   }
 }
 
-// ================= Task detail =================
+// ================= Calendar =================
+function renderCalendar() {
+  const label = new Date(calYear, calMonth, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  document.getElementById('calMonthLabel').textContent = label;
+
+  const grid = document.getElementById('calGrid');
+  const firstDow = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const todayS = todayStr();
+
+  let html = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div class="cal-dow">${d}</div>`).join('');
+  for (let i = 0; i < firstDow; i++) html += `<div class="cal-day empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dayTasks = allTasks.filter(t => t.dueDate === dateStr);
+    const tabsPresent = [...new Set(dayTasks.map(t => t.tab))];
+    const dots = tabsPresent.map(tab => `<span class="dot ${tab}"></span>`).join('');
+    const todayClass = dateStr === todayS ? 'today' : '';
+    html += `<div class="cal-day ${todayClass}" data-date="${dateStr}"><div>${d}</div><div class="dots">${dots}</div></div>`;
+  }
+  grid.innerHTML = html;
+
+  grid.querySelectorAll('.cal-day[data-date]').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const dateStr = cell.dataset.date;
+      const dayTasks = allTasks.filter(t => t.dueDate === dateStr);
+      openDayTasksModal(dateStr, dayTasks);
+    });
+  });
+}
+
+function openDayTasksModal(dateStr, tasks) {
+  document.getElementById('dayTasksTitle').textContent = formatDate(dateStr);
+  const list = document.getElementById('dayTasksList');
+  list.innerHTML = tasks.length ? tasks.map(t => `
+    <div class="task-card" data-task-id="${t.id}" style="background:var(--surface-2); color:var(--text);">
+      <div class="task-card-main">
+        <div class="task-card-no">${t.activityNo} &middot; ${capitalize(t.tab)}</div>
+        <div class="task-card-title">${escapeHtml(t.title)}</div>
+      </div>
+    </div>`).join('') : `<div class="empty-state">No tasks due this day</div>`;
+  list.querySelectorAll('[data-task-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.getElementById('dayTasksModal').classList.add('hidden');
+      openTaskDetail(el.dataset.taskId);
+    });
+  });
+  document.getElementById('dayTasksModal').classList.remove('hidden');
+}
+
+document.getElementById('calPrevBtn').addEventListener('click', () => {
+  calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderCalendar();
+});
+document.getElementById('calNextBtn').addEventListener('click', () => {
+  calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+});
+document.getElementById('closeDayTasks').addEventListener('click', () => {
+  document.getElementById('dayTasksModal').classList.add('hidden');
+});
+
+// ================= Task detail (read-only view) =================
 function openTaskDetail(id) {
   currentTaskId = id;
   const t = allTasks.find(t => t.id === id);
@@ -369,10 +492,15 @@ function openTaskDetail(id) {
 
   document.getElementById('taskDetailNo').textContent = t.activityNo;
   document.getElementById('taskDetailTitle').textContent = t.title;
-  document.getElementById('detailTitleInput').value = t.title;
-  document.getElementById('detailDueInput').value = t.dueDate || '';
-  document.getElementById('detailGroupInput').value = t.tab;
-  document.getElementById('detailCreatedByInput').value = t.createdBy || '';
+  document.getElementById('viewDueDate').textContent = formatDate(t.dueDate);
+  document.getElementById('viewGroup').textContent = capitalize(t.tab);
+  document.getElementById('viewCreatedBy').textContent = t.createdBy || '\u2014';
+
+  let statusHtml;
+  if (t.status === 'completed') statusHtml = '<span class="status-badge completed">Completed</span>';
+  else if (isOverdue(t)) statusHtml = '<span class="status-badge overdue">Overdue</span>';
+  else statusHtml = '<span class="status-badge open">Open</span>';
+  document.getElementById('viewStatus').innerHTML = statusHtml;
 
   const toggleBtn = document.getElementById('toggleCompleteBtn');
   toggleBtn.textContent = t.status === 'completed' ? 'Reopen task' : 'Mark complete';
@@ -389,15 +517,6 @@ function renderNotes(t) {
     : `<div class="empty-state">No notes yet</div>`;
 }
 
-document.getElementById('saveDetailBtn').addEventListener('click', async () => {
-  const title = document.getElementById('detailTitleInput').value.trim();
-  const dueDate = document.getElementById('detailDueInput').value || null;
-  const tab = document.getElementById('detailGroupInput').value;
-  const createdBy = document.getElementById('detailCreatedByInput').value.trim().toUpperCase().slice(0, 3);
-  if (!title) return;
-  await updateTask(currentTaskId, { title, dueDate, tab, createdBy });
-});
-
 document.getElementById('addNoteBtn').addEventListener('click', async () => {
   const input = document.getElementById('newNoteInput');
   const text = input.value.trim();
@@ -411,9 +530,42 @@ document.getElementById('toggleCompleteBtn').addEventListener('click', async () 
   await setTaskStatus(currentTaskId, t.status === 'open' ? 'completed' : 'open');
 });
 
+// ================= Edit Task modal =================
+const editTaskModal = document.getElementById('editTaskModal');
+
+function selectEditCreator(name) {
+  editSelectedCreator = (editSelectedCreator === name) ? null : name;
+  renderCreatorChips(document.getElementById('editCreatorChips'), editSelectedCreator, selectEditCreator);
+}
+
+document.getElementById('openEditBtn').addEventListener('click', () => {
+  const t = allTasks.find(t => t.id === currentTaskId);
+  if (!t) return;
+  document.getElementById('editTitleInput').value = t.title;
+  document.getElementById('editDueInput').value = t.dueDate || '';
+  document.getElementById('editGroupInput').value = t.tab;
+  editSelectedCreator = t.createdBy || null;
+  renderCreatorChips(document.getElementById('editCreatorChips'), editSelectedCreator, selectEditCreator);
+  editTaskModal.classList.remove('hidden');
+});
+
+document.getElementById('cancelEditTask').addEventListener('click', () => {
+  editTaskModal.classList.add('hidden');
+});
+
+document.getElementById('saveEditTask').addEventListener('click', async () => {
+  const title = document.getElementById('editTitleInput').value.trim();
+  const dueDate = document.getElementById('editDueInput').value || null;
+  const tab = document.getElementById('editGroupInput').value;
+  if (!title) return;
+  await updateTask(currentTaskId, { title, dueDate, tab, createdBy: editSelectedCreator });
+  editTaskModal.classList.add('hidden');
+});
+
 document.getElementById('deleteTaskBtn').addEventListener('click', async () => {
   if (!confirm('Delete this task? This cannot be undone.')) return;
   await deleteTask(currentTaskId);
+  editTaskModal.classList.add('hidden');
   goToView(previousTabView);
 });
 
@@ -421,13 +573,19 @@ document.getElementById('deleteTaskBtn').addEventListener('click', async () => {
 const addTaskModal = document.getElementById('addTaskModal');
 let addTaskTab = 'simple';
 
+function selectAddTaskCreator(name) {
+  addTaskSelectedCreator = (addTaskSelectedCreator === name) ? null : name;
+  renderCreatorChips(document.getElementById('addTaskCreatorChips'), addTaskSelectedCreator, selectAddTaskCreator);
+}
+
 document.querySelectorAll('[data-add-task]').forEach(btn => {
   btn.addEventListener('click', () => {
     addTaskTab = btn.dataset.addTask;
     document.getElementById('addTaskTitleInput').value = '';
     document.getElementById('addTaskDueInput').value = todayStr();
-    document.getElementById('addTaskCreatedByInput').value = '';
     document.getElementById('addTaskError').textContent = '';
+    addTaskSelectedCreator = null;
+    renderCreatorChips(document.getElementById('addTaskCreatorChips'), addTaskSelectedCreator, selectAddTaskCreator);
     addTaskModal.classList.remove('hidden');
   });
 });
@@ -435,12 +593,11 @@ document.getElementById('cancelAddTask').addEventListener('click', () => addTask
 document.getElementById('saveAddTask').addEventListener('click', async () => {
   const title = document.getElementById('addTaskTitleInput').value.trim();
   const dueDate = document.getElementById('addTaskDueInput').value || null;
-  const createdBy = document.getElementById('addTaskCreatedByInput').value.trim().toUpperCase().slice(0, 3);
   if (!title) {
     document.getElementById('addTaskError').textContent = 'Enter a title';
     return;
   }
-  await addTask({ tab: addTaskTab, title, dueDate, createdBy });
+  await addTask({ tab: addTaskTab, title, dueDate, createdBy: addTaskSelectedCreator });
   addTaskModal.classList.add('hidden');
 });
 
@@ -448,6 +605,7 @@ document.getElementById('saveAddTask').addEventListener('click', async () => {
 function refreshCurrentView() {
   if (currentTab === 'home') renderHome();
   if (['simple', 'medium', 'heavy'].includes(currentTab)) renderTabList(currentTab);
+  if (currentTab === 'calendar') renderCalendar();
   if (currentTab === 'taskDetail' && currentTaskId) {
     const t = allTasks.find(t => t.id === currentTaskId);
     if (t) {
@@ -458,16 +616,24 @@ function refreshCurrentView() {
 }
 
 let unsubscribeTasks = null;
+let unsubscribeSettings = null;
 firebase.auth().onAuthStateChanged((user) => {
   if (user && !unsubscribeTasks) {
     unsubscribeTasks = listenToTasks((tasks) => {
       allTasks = tasks;
       refreshCurrentView();
     });
+    unsubscribeSettings = listenToAppSettings((data) => {
+      creatorNames = (data && Array.isArray(data.createdByNames) && data.createdByNames.length === 3)
+        ? data.createdByNames
+        : ['Name 1', 'Name 2', 'Name 3'];
+      if (currentTab === 'settings') populateSettingsFields();
+    });
+    startLockFlow();
   }
 });
 
 // ================= Init =================
 initTheme();
-startLockFlow();
+lockscreen.classList.remove('hidden'); // block content until startLockFlow resolves
 goToView('home');

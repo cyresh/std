@@ -13,61 +13,21 @@
     --radius:16px;
     --font-scale:1;
   }
-  /* ---------- Dark theme (default) ---------- */
   html[data-theme="dark"]{
-    --bg:#0b1220;
-    --surface:#141d2f;
-    --surface-2:#1b263b;
-    --border:#243046;
-    --text:#e9edf5;
-    --text-dim:#8b96ab;
-    --accent:#3b82f6;
-    --good:#22c55e;
-    --warn:#f59e0b;
-    --bad:#ef4444;
-
-    --simple-wash:#0f2340;
-    --simple-card:#16335c;
-    --simple-text:#eaf3ff;
-    --simple-accent:#3b82f6;
-
-    --medium-wash:#3a2408;
-    --medium-card:#5a380d;
-    --medium-text:#fff2e2;
-    --medium-accent:#f59e0b;
-
-    --heavy-wash:#3a0d10;
-    --heavy-card:#5c1418;
-    --heavy-text:#ffecec;
-    --heavy-accent:#ef4444;
+    --bg:#0b1220; --surface:#141d2f; --surface-2:#1b263b; --border:#243046;
+    --text:#e9edf5; --text-dim:#8b96ab; --accent:#3b82f6;
+    --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+    --simple-wash:#0f2340; --simple-card:#16335c; --simple-text:#eaf3ff; --simple-accent:#3b82f6;
+    --medium-wash:#3a2408; --medium-card:#5a380d; --medium-text:#fff2e2; --medium-accent:#f59e0b;
+    --heavy-wash:#3a0d10; --heavy-card:#5c1418; --heavy-text:#ffecec; --heavy-accent:#ef4444;
   }
-  /* ---------- Light theme ---------- */
   html[data-theme="light"]{
-    --bg:#f4f6fb;
-    --surface:#ffffff;
-    --surface-2:#eef1f7;
-    --border:#dde3ee;
-    --text:#141a26;
-    --text-dim:#6b7386;
-    --accent:#2563eb;
-    --good:#16a34a;
-    --warn:#d97706;
-    --bad:#dc2626;
-
-    --simple-wash:#dceafe;
-    --simple-card:#ffffff;
-    --simple-text:#0f2c5c;
-    --simple-accent:#2563eb;
-
-    --medium-wash:#fde8cc;
-    --medium-card:#ffffff;
-    --medium-text:#5c3a0f;
-    --medium-accent:#d97706;
-
-    --heavy-wash:#fbdada;
-    --heavy-card:#ffffff;
-    --heavy-text:#5c1418;
-    --heavy-accent:#dc2626;
+    --bg:#f4f6fb; --surface:#ffffff; --surface-2:#eef1f7; --border:#dde3ee;
+    --text:#141a26; --text-dim:#6b7386; --accent:#2563eb;
+    --good:#16a34a; --warn:#d97706; --bad:#dc2626;
+    --simple-wash:#dceafe; --simple-card:#ffffff; --simple-text:#0f2c5c; --simple-accent:#2563eb;
+    --medium-wash:#fde8cc; --medium-card:#ffffff; --medium-text:#5c3a0f; --medium-accent:#d97706;
+    --heavy-wash:#fbdada; --heavy-card:#ffffff; --heavy-text:#5c1418; --heavy-accent:#dc2626;
   }
 
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -80,13 +40,11 @@
   }
   #app{ display:flex; flex-direction:column; height:100dvh; transition:background .2s; }
 
-  /* ---------- Sticky-note tab wash ---------- */
   #app.tab-simple{ background:var(--simple-wash); }
   #app.tab-medium{ background:var(--medium-wash); }
   #app.tab-heavy{ background:var(--heavy-wash); }
-  #app.tab-home,#app.tab-settings{ background:var(--bg); }
+  #app.tab-home,#app.tab-settings,#app.tab-calendar{ background:var(--bg); }
 
-  /* ---------- Top bar ---------- */
   #topbar{
     display:flex; align-items:center; justify-content:space-between;
     padding:14px 16px; background:var(--surface); border-bottom:1px solid var(--border);
@@ -101,8 +59,7 @@
   .icon-btn:active{ background:var(--border); }
   .topbar-actions{ display:flex; gap:8px; }
 
-  /* ---------- Views ---------- */
-  #views{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; padding-bottom:90px; }
+  #views{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; padding-bottom:110px; }
   .view{ display:none; animation:fade .15s ease; }
   .view.active{ display:block; }
   @keyframes fade{ from{opacity:0} to{opacity:1} }
@@ -114,19 +71,19 @@
   .card h3{ margin:0 0 10px 0; font-size:1em; color:var(--text-dim); font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
   .empty-state{ color:var(--text-dim); font-size:.9em; text-align:center; padding:30px 10px; }
 
-  /* ---------- Bottom nav ---------- */
+  /* ---------- Bottom nav (increased height) ---------- */
   #bottomnav{
     position:fixed; bottom:0; left:0; right:0;
     display:flex; background:var(--surface); border-top:1px solid var(--border);
-    padding-bottom:env(safe-area-inset-bottom);
+    padding-bottom:calc(16px + env(safe-area-inset-bottom));
     z-index:20;
   }
   .navbtn{
     flex:1; border:none; background:none; color:var(--text-dim);
-    display:flex; flex-direction:column; align-items:center; gap:4px;
-    padding:10px 4px 8px; font-size:.72em; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding:16px 4px 10px; font-size:.76em; cursor:pointer;
   }
-  .navbtn .navicon{ font-size:1.35em; line-height:1; }
+  .navbtn .navicon{ font-size:1.6em; line-height:1; }
   .navbtn.active{ color:var(--accent); }
   .navbtn.active[data-tab="simple"]{ color:var(--simple-accent); }
   .navbtn.active[data-tab="medium"]{ color:var(--medium-accent); }
@@ -157,7 +114,7 @@
   .key.func{ font-size:1.2em; color:var(--text-dim); }
   .lock-error{ color:var(--bad); font-size:.85em; height:18px; margin-top:-14px; margin-bottom:14px; }
 
-  /* ---------- Toggle switch ---------- */
+  /* ---------- Toggle switch / settings rows ---------- */
   .row{ display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border); }
   .row:last-child{ border-bottom:none; }
   .row-label{ font-size:.98em; }
@@ -180,7 +137,6 @@
   .btn.secondary{ background:var(--surface-2); color:var(--text); }
   .btn.danger{ background:var(--bad); }
 
-  /* Tab-tinted primary buttons */
   #app.tab-simple .btn:not(.secondary):not(.danger){ background:var(--simple-accent); }
   #app.tab-medium .btn:not(.secondary):not(.danger){ background:var(--medium-accent); }
   #app.tab-heavy .btn:not(.secondary):not(.danger){ background:var(--heavy-accent); }
@@ -197,19 +153,13 @@
   }
   .modal h3{ margin-top:0; }
 
-  /* ---------- Forms ---------- */
   .field{ margin-bottom:14px; }
   .field label{ display:block; font-size:.82em; color:var(--text-dim); margin-bottom:6px; }
   .field input[type="text"], .field input[type="date"], .field select{
     width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border);
     background:var(--surface-2); color:var(--text); font-size:1em; appearance:none;
   }
-  .field textarea{
-    width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border);
-    background:var(--surface-2); color:var(--text); font-size:1em; font-family:inherit; resize:vertical; min-height:70px;
-  }
 
-  /* ---------- Task groups & cards ---------- */
   .group-header{
     font-size:.78em; font-weight:700; color:var(--text-dim); text-transform:uppercase;
     letter-spacing:.5px; margin:18px 0 8px; padding-left:2px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;
@@ -236,10 +186,18 @@
   }
   .tick-btn.done{ background:var(--good); border-color:var(--good); color:#fff; opacity:1; }
 
-  /* ---------- Task detail ---------- */
   .detail-header{ margin-bottom:10px; }
   .detail-header .no{ font-size:.78em; font-weight:700; color:var(--text-dim); letter-spacing:.4px; }
   .detail-header .name{ font-size:1.25em; font-weight:800; margin-top:2px; }
+
+  .detail-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
+  .detail-row:last-child{ border-bottom:none; }
+  .detail-row .k{ color:var(--text-dim); font-size:.88em; }
+  .detail-row .v{ font-weight:600; font-size:.92em; text-align:right; }
+  .status-badge{ display:inline-block; padding:3px 12px; border-radius:20px; font-size:.75em; font-weight:700; }
+  .status-badge.open{ background:var(--surface-2); color:var(--text-dim); }
+  .status-badge.completed{ background:var(--good); color:#fff; }
+  .status-badge.overdue{ background:var(--bad); color:#fff; }
 
   .note-entry{ border-bottom:1px solid var(--border); padding:10px 0; }
   .note-entry:last-child{ border-bottom:none; }
@@ -249,7 +207,13 @@
   .note-input-row input{ flex:1; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:.92em; }
   .note-add-btn{ background:var(--accent); color:#fff; border:none; border-radius:10px; padding:0 16px; font-weight:600; cursor:pointer; }
 
-  /* ---------- Home dashboard ---------- */
+  .chip-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .chip{
+    padding:10px 16px; border-radius:20px; border:1px solid var(--border); background:var(--surface-2);
+    color:var(--text); font-size:.9em; cursor:pointer;
+  }
+  .chip.selected{ background:var(--accent); color:#fff; border-color:var(--accent); }
+
   .stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:6px; }
   .stat-tile{ background:var(--surface-2); border-radius:14px; padding:12px; text-align:center; }
   .stat-tile .num{ font-size:1.5em; font-weight:800; }
@@ -276,6 +240,25 @@
   .overdue-row .d{ font-size:.78em; color:var(--bad); font-weight:700; }
 
   .empty-check{ text-align:center; padding:20px 10px; color:var(--text-dim); font-size:.9em; }
+
+  /* ---------- Calendar ---------- */
+  .cal-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .cal-header .label{ font-size:1.05em; font-weight:700; }
+  .cal-nav-btn{ width:36px; height:36px; border-radius:10px; border:none; background:var(--surface-2); color:var(--text); font-size:1.1em; cursor:pointer; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .cal-dow{ text-align:center; font-size:.7em; color:var(--text-dim); font-weight:700; padding-bottom:4px; }
+  .cal-day{
+    aspect-ratio:1; border-radius:10px; background:var(--surface); border:1px solid var(--border);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    cursor:pointer; font-size:.85em; position:relative;
+  }
+  .cal-day.empty{ visibility:hidden; cursor:default; border:none; }
+  .cal-day.today{ border:2px solid var(--accent); }
+  .cal-day .dots{ display:flex; gap:3px; height:6px; }
+  .cal-day .dot{ width:6px; height:6px; border-radius:50%; }
+  .cal-day .dot.simple{ background:var(--simple-accent); }
+  .cal-day .dot.medium{ background:var(--medium-accent); }
+  .cal-day .dot.heavy{ background:var(--heavy-accent); }
 </style>
 </head>
 <body>
@@ -286,7 +269,8 @@
     <button class="icon-btn" id="backBtn" title="Back" style="visibility:hidden;">&#8592;</button>
     <div class="title" id="viewTitle">Std</div>
     <div class="topbar-actions">
-      <button class="icon-btn" id="themeToggleBtn" title="Toggle theme">&#9788;</button>
+      <button class="icon-btn" id="calendarBtn" title="Calendar">&#128197;</button>
+      <button class="icon-btn" id="settingsBtn" title="Settings">&#9881;</button>
     </div>
   </div>
 
@@ -329,7 +313,7 @@
       </div>
     </div>
 
-    <!-- ============ SIMPLE / MEDIUM / HEAVY (shared template rendered per tab) ============ -->
+    <!-- ============ SIMPLE / MEDIUM / HEAVY ============ -->
     <div class="view" id="view-simple" data-tab="simple">
       <button class="btn" data-add-task="simple" style="margin-bottom:14px;">+ Add task</button>
       <div id="list-simple"></div>
@@ -343,7 +327,17 @@
       <div id="list-heavy"></div>
     </div>
 
-    <!-- ============ TASK DETAIL ============ -->
+    <!-- ============ CALENDAR ============ -->
+    <div class="view" id="view-calendar">
+      <div class="cal-header">
+        <button class="cal-nav-btn" id="calPrevBtn">&#8249;</button>
+        <div class="label" id="calMonthLabel">Month Year</div>
+        <button class="cal-nav-btn" id="calNextBtn">&#8250;</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+
+    <!-- ============ TASK DETAIL (read-only first) ============ -->
     <div class="view" id="view-taskDetail">
       <div class="detail-header">
         <div class="no" id="taskDetailNo"></div>
@@ -351,28 +345,11 @@
       </div>
 
       <div class="card">
-        <h3>Details</h3>
-        <div class="field">
-          <label>Title</label>
-          <input type="text" id="detailTitleInput">
-        </div>
-        <div class="field">
-          <label>Due date</label>
-          <input type="date" id="detailDueInput">
-        </div>
-        <div class="field">
-          <label>Group</label>
-          <select id="detailGroupInput">
-            <option value="simple">Simple</option>
-            <option value="medium">Medium</option>
-            <option value="heavy">Heavy</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Created by <span style="opacity:.6;">(initials)</span></label>
-          <input type="text" id="detailCreatedByInput" maxlength="3" placeholder="e.g. RAJ" style="text-transform:uppercase;">
-        </div>
-        <button class="btn secondary" id="saveDetailBtn">Save changes</button>
+        <div class="detail-row"><span class="k">Due date</span><span class="v" id="viewDueDate"></span></div>
+        <div class="detail-row"><span class="k">Group</span><span class="v" id="viewGroup"></span></div>
+        <div class="detail-row"><span class="k">Created by</span><span class="v" id="viewCreatedBy"></span></div>
+        <div class="detail-row"><span class="k">Status</span><span class="v" id="viewStatus"></span></div>
+        <button class="btn secondary" id="openEditBtn" style="margin-top:14px;">Edit</button>
       </div>
 
       <div class="card">
@@ -385,7 +362,6 @@
       </div>
 
       <button class="btn" id="toggleCompleteBtn" style="margin-bottom:10px;">Mark complete</button>
-      <button class="btn danger" id="deleteTaskBtn">Delete task</button>
     </div>
 
     <!-- ============ SETTINGS ============ -->
@@ -402,23 +378,44 @@
           </label>
         </div>
         <div class="settings-link" id="changePinLink">
-          <span>Change PIN</span>
+          <div>
+            <div class="row-label">Change PIN</div>
+            <div class="row-sub">Applies to every device</div>
+          </div>
           <span class="chev">&#8250;</span>
         </div>
+      </div>
+
+      <div class="card">
+        <h3>Task creators</h3>
+        <div class="field">
+          <label>Name 1</label>
+          <input type="text" id="creatorName1Input" placeholder="Name 1">
+        </div>
+        <div class="field">
+          <label>Name 2</label>
+          <input type="text" id="creatorName2Input" placeholder="Name 2">
+        </div>
+        <div class="field">
+          <label>Name 3</label>
+          <input type="text" id="creatorName3Input" placeholder="Name 3">
+        </div>
+        <button class="btn secondary" id="saveCreatorNamesBtn">Save names</button>
       </div>
 
       <div class="card">
         <h3>Help</h3>
         <div class="row-sub" style="line-height:1.7;">
           <strong>Home</strong> &mdash; overview stats, progress per group, and anything past due.<br><br>
-          <strong>Simple / Medium / Heavy</strong> &mdash; your task groups. Open items on top, completed below. Tap a task to edit it, add a progress note, mark it complete, or reopen it.<br><br>
-          <strong>PIN</strong> &mdash; asked once per day per device.
+          <strong>Simple / Medium / Heavy</strong> &mdash; your task groups. Open items on top, completed below. Tap a task to view it, then tap Edit to change details, add a progress note, mark it complete, or reopen it.<br><br>
+          <strong>Calendar</strong> (top right) &mdash; month view with colored dots for tasks due that day; tap a day to see and open them.<br><br>
+          <strong>PIN</strong> &mdash; one shared PIN for all your devices, asked once per day per device. Change it any time in Settings.
         </div>
       </div>
 
       <div class="card">
         <h3>About</h3>
-        <div class="row-sub" id="aboutText">Std &middot; Version 1.0.0</div>
+        <div class="row-sub" id="aboutText">Std &middot; Version 1.1.0</div>
       </div>
     </div>
 
@@ -429,7 +426,6 @@
     <button class="navbtn" data-nav="simple" data-tab="simple"><span class="navicon">&#9679;</span>Simple</button>
     <button class="navbtn" data-nav="medium" data-tab="medium"><span class="navicon">&#9679;</span>Medium</button>
     <button class="navbtn" data-nav="heavy" data-tab="heavy"><span class="navicon">&#9679;</span>Heavy</button>
-    <button class="navbtn" data-nav="settings"><span class="navicon">&#9881;</span>Settings</button>
   </div>
 
 </div>
@@ -462,6 +458,7 @@
 <div class="modal-backdrop hidden" id="changePinModal">
   <div class="modal">
     <h3>Change PIN</h3>
+    <div class="row-sub" style="margin-bottom:14px;">This changes the shared PIN used by all your devices.</div>
     <div class="pin-dots" id="newPinDots" style="justify-content:center; margin-bottom:20px;">
       <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
     </div>
@@ -497,14 +494,55 @@
       <input type="date" id="addTaskDueInput">
     </div>
     <div class="field">
-      <label>Created by <span style="opacity:.6;">(initials)</span></label>
-      <input type="text" id="addTaskCreatedByInput" maxlength="3" placeholder="e.g. RAJ" style="text-transform:uppercase;">
+      <label>Created by</label>
+      <div class="chip-row" id="addTaskCreatorChips"></div>
     </div>
     <div id="addTaskError" class="lock-error" style="text-align:left; margin-top:0;"></div>
     <div style="display:flex; gap:10px;">
       <button class="btn secondary" id="cancelAddTask" style="flex:1;">Cancel</button>
       <button class="btn" id="saveAddTask" style="flex:1;">Add</button>
     </div>
+  </div>
+</div>
+
+<!-- Edit Task modal -->
+<div class="modal-backdrop hidden" id="editTaskModal">
+  <div class="modal">
+    <h3>Edit task</h3>
+    <div class="field">
+      <label>Title</label>
+      <input type="text" id="editTitleInput">
+    </div>
+    <div class="field">
+      <label>Due date</label>
+      <input type="date" id="editDueInput">
+    </div>
+    <div class="field">
+      <label>Group</label>
+      <select id="editGroupInput">
+        <option value="simple">Simple</option>
+        <option value="medium">Medium</option>
+        <option value="heavy">Heavy</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Created by</label>
+      <div class="chip-row" id="editCreatorChips"></div>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:6px;">
+      <button class="btn secondary" id="cancelEditTask" style="flex:1;">Cancel</button>
+      <button class="btn" id="saveEditTask" style="flex:1;">Save</button>
+    </div>
+    <button class="btn danger" id="deleteTaskBtn" style="margin-top:14px;">Delete task</button>
+  </div>
+</div>
+
+<!-- Day tasks modal (from calendar) -->
+<div class="modal-backdrop hidden" id="dayTasksModal">
+  <div class="modal">
+    <h3 id="dayTasksTitle">Tasks</h3>
+    <div id="dayTasksList"></div>
+    <button class="btn secondary" id="closeDayTasks" style="margin-top:14px;">Close</button>
   </div>
 </div>
 
