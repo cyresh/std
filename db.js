@@ -1,9 +1,10 @@
 // ---------- Firestore data layer ----------
 // Collections:
-//   tasks           { id, tab, activityNo, title, dueDate, createdBy, status, createdAt, completedAt, notes:[{ts,text}] }
+//   tasks           { id, tab, activityNo, title, dueDate, dueTime, location, createdBy,
+//                      status, createdAt, completedAt, notes:[{ts,text}] }
 //   meta/counters   { simple:0, medium:0, heavy:0 }
-//   meta/security   { pinHash }               <- shared PIN, applies to every device
-//   meta/appSettings{ createdByNames:[a,b,c] } <- editable "created by" name list
+//   meta/security   { pinHash }
+//   meta/appSettings{ createdByNames:[...], tabLabels:{simple,medium,heavy} }
 
 const TASKS_COL = firestoreDb.collection('tasks');
 const COUNTERS_DOC = firestoreDb.collection('meta').doc('counters');
@@ -22,13 +23,15 @@ async function nextActivityNo(tab) {
   });
 }
 
-async function addTask({ tab, title, dueDate, createdBy }) {
+async function addTask({ tab, title, dueDate, dueTime, location, createdBy }) {
   const activityNo = await nextActivityNo(tab);
   const doc = {
     tab,
     activityNo,
     title,
     dueDate: dueDate || null,
+    dueTime: dueTime || null,
+    location: location || null,
     createdBy: createdBy || null,
     status: 'open',
     createdAt: Date.now(),
@@ -54,6 +57,11 @@ function addNoteToTask(id, text) {
   });
 }
 
+// Overwrites the whole notes array — used when editing an existing note's text.
+function replaceTaskNotes(id, notesArray) {
+  return TASKS_COL.doc(id).update({ notes: notesArray });
+}
+
 function setTaskStatus(id, status) {
   return TASKS_COL.doc(id).update({
     status,
@@ -61,11 +69,13 @@ function setTaskStatus(id, status) {
   });
 }
 
+// options: { includeMetadataChanges: true } lets the caller derive sync status
+// (hasPendingWrites / fromCache) from snapshot.metadata.
 function listenToTasks(callback) {
-  return TASKS_COL.onSnapshot((snapshot) => {
+  return TASKS_COL.onSnapshot({ includeMetadataChanges: true }, (snapshot) => {
     const tasks = [];
     snapshot.forEach((doc) => tasks.push({ id: doc.id, ...doc.data() }));
-    callback(tasks);
+    callback(tasks, snapshot.metadata);
   }, (err) => {
     console.error('Firestore tasks listener error:', err);
   });
@@ -81,7 +91,7 @@ function setGlobalPinHash(hash) {
   return SECURITY_DOC.set({ pinHash: hash }, { merge: true });
 }
 
-// ---------- App settings (creator names) ----------
+// ---------- App settings (creator names + tab labels) ----------
 function listenToAppSettings(callback) {
   return APP_SETTINGS_DOC.onSnapshot((doc) => {
     callback(doc.exists ? doc.data() : null);
@@ -92,4 +102,8 @@ function listenToAppSettings(callback) {
 
 function setCreatorNames(names) {
   return APP_SETTINGS_DOC.set({ createdByNames: names }, { merge: true });
+}
+
+function setTabLabels(labels) {
+  return APP_SETTINGS_DOC.set({ tabLabels: labels }, { merge: true });
 }
