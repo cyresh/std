@@ -867,6 +867,12 @@ function selectAddTaskCreator(name) {
   addTaskSelectedCreator = (addTaskSelectedCreator === name) ? null : name;
   renderCreatorChips(document.getElementById('addTaskCreatorChips'), addTaskSelectedCreator, selectAddTaskCreator);
 }
+function updateAddTaskGroupPill() {
+  const pill = document.getElementById('addTaskGroupPill');
+  pill.textContent = tabLabels[addTaskTab];
+  pill.className = 'group-pill ' + addTaskTab;
+}
+
 function openAddTaskModal(tab) {
   addTaskTab = tab;
   document.getElementById('addTaskTitleInput').value = '';
@@ -876,8 +882,15 @@ function openAddTaskModal(tab) {
   document.getElementById('addTaskError').textContent = '';
   addTaskSelectedCreator = null;
   renderCreatorChips(document.getElementById('addTaskCreatorChips'), addTaskSelectedCreator, selectAddTaskCreator);
+  updateAddTaskGroupPill();
   addTaskModal.classList.remove('hidden');
 }
+
+document.getElementById('addTaskGroupPill').addEventListener('click', () => {
+  const order = ['simple', 'medium', 'heavy'];
+  addTaskTab = order[(order.indexOf(addTaskTab) + 1) % order.length];
+  updateAddTaskGroupPill();
+});
 
 document.querySelectorAll('[data-add-task]').forEach(btn => {
   btn.addEventListener('click', () => openAddTaskModal(btn.dataset.addTask));
