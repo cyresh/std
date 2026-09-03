@@ -952,6 +952,25 @@ firebase.auth().onAuthStateChanged((user) => {
   }
 });
 
+// ================= Install prompt (Chrome/Edge) =================
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  document.getElementById('installCard').style.display = 'block';
+});
+document.getElementById('installAppBtn').addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  document.getElementById('installCard').style.display = 'none';
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  document.getElementById('installCard').style.display = 'none';
+});
+
 // ================= Init =================
 initTheme();
 initNotifToggle();
