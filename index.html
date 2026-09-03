@@ -43,11 +43,15 @@
   #topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
   #topbar .title{ font-size:1.15em; font-weight:700; letter-spacing:.2px; }
   .icon-btn{ width:40px; height:40px; border-radius:12px; border:none; background:var(--surface-2); color:var(--text); display:flex; align-items:center; justify-content:center; font-size:1.1em; cursor:pointer; }
+  .icon-btn svg{ width:20px; height:20px; }
   .icon-btn:active{ background:var(--border); }
   .topbar-actions{ display:flex; align-items:center; gap:8px; }
-  .sync-dot{ width:10px; height:10px; border-radius:50%; background:var(--good); margin-right:2px; flex-shrink:0; transition:background .2s; }
+  .sync-dot{ width:15px; height:15px; border-radius:50%; background:var(--good); margin-right:2px; flex-shrink:0; transition:background .2s; }
   .sync-dot.syncing{ background:var(--accent); }
   .sync-dot.offline{ background:var(--bad); }
+  .fab-add{ width:40px; height:40px; border-radius:50%; border:none; cursor:pointer; background:linear-gradient(135deg, var(--accent), #8b5cf6); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 10px rgba(59,130,246,.4); flex-shrink:0; }
+  .fab-add:active{ opacity:.85; transform:scale(.96); }
+  .fab-add svg{ width:20px; height:20px; }
 
   #views{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; padding-bottom:110px; touch-action: pan-y; }
   .view{ display:none; animation:fade .15s ease; }
@@ -189,7 +193,10 @@
   .progress-fill.overall{ background:var(--good); }
   .progress-fill.total-bar{ opacity:.35; }
 
-  .overdue-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); cursor:pointer; }
+  .overdue-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0 10px 10px; border-bottom:1px solid var(--border); border-left:4px solid transparent; cursor:pointer; }
+  .overdue-row.tab-simple{ border-left-color:var(--simple-accent); }
+  .overdue-row.tab-medium{ border-left-color:var(--medium-accent); }
+  .overdue-row.tab-heavy{ border-left-color:var(--heavy-accent); }
   .overdue-row:last-child{ border-bottom:none; }
   .overdue-row .t{ font-size:.92em; font-weight:600; }
   .overdue-row .d{ font-size:.78em; color:var(--bad); font-weight:700; }
@@ -238,7 +245,15 @@
       </button>
       <button class="icon-btn" id="searchBtn" title="Search">&#128269;</button>
       <button class="icon-btn" id="calendarBtn" title="Calendar">&#128197;</button>
-      <button class="icon-btn" id="settingsBtn" title="Settings">&#9881;</button>
+      <button class="icon-btn" id="settingsBtn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+        </svg>
+      </button>
+      <button class="fab-add" id="quickAddBtn" title="Add task">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
     </div>
   </div>
 

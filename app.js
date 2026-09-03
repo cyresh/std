@@ -848,18 +848,26 @@ function selectAddTaskCreator(name) {
   addTaskSelectedCreator = (addTaskSelectedCreator === name) ? null : name;
   renderCreatorChips(document.getElementById('addTaskCreatorChips'), addTaskSelectedCreator, selectAddTaskCreator);
 }
+function openAddTaskModal(tab) {
+  addTaskTab = tab;
+  document.getElementById('addTaskTitleInput').value = '';
+  document.getElementById('addTaskDueInput').value = todayStr();
+  document.getElementById('addTaskTimeInput').value = '';
+  document.getElementById('addTaskLocationInput').value = '';
+  document.getElementById('addTaskError').textContent = '';
+  addTaskSelectedCreator = null;
+  renderCreatorChips(document.getElementById('addTaskCreatorChips'), addTaskSelectedCreator, selectAddTaskCreator);
+  addTaskModal.classList.remove('hidden');
+}
+
 document.querySelectorAll('[data-add-task]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    addTaskTab = btn.dataset.addTask;
-    document.getElementById('addTaskTitleInput').value = '';
-    document.getElementById('addTaskDueInput').value = todayStr();
-    document.getElementById('addTaskTimeInput').value = '';
-    document.getElementById('addTaskLocationInput').value = '';
-    document.getElementById('addTaskError').textContent = '';
-    addTaskSelectedCreator = null;
-    renderCreatorChips(document.getElementById('addTaskCreatorChips'), addTaskSelectedCreator, selectAddTaskCreator);
-    addTaskModal.classList.remove('hidden');
-  });
+  btn.addEventListener('click', () => openAddTaskModal(btn.dataset.addTask));
+});
+
+document.getElementById('quickAddBtn').addEventListener('click', () => {
+  const targetTab = ['simple', 'medium', 'heavy'].includes(currentTab) ? currentTab
+    : (['simple', 'medium', 'heavy'].includes(previousTabView) ? previousTabView : 'simple');
+  openAddTaskModal(targetTab);
 });
 document.getElementById('cancelAddTask').addEventListener('click', () => addTaskModal.classList.add('hidden'));
 document.getElementById('saveAddTask').addEventListener('click', async () => {
