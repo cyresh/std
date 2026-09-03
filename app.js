@@ -108,13 +108,13 @@ function renderNotificationsView() {
   const overdue = overdueTasks();
 
   todayList.innerHTML = today.length ? today.map(t => `
-    <div class="overdue-row" data-task-id="${t.id}">
+    <div class="overdue-row tab-${t.tab}" data-task-id="${t.id}">
       <div class="t">${escapeHtml(t.title)} <span style="opacity:.5; font-weight:400;">(${t.activityNo})</span></div>
       <div class="d" style="color:var(--text-dim);">${t.dueTime ? formatTime(t.dueTime) : ''}</div>
     </div>`).join('') : `<div class="empty-check">Nothing due today</div>`;
 
   overdueList.innerHTML = overdue.length ? overdue.map(t => `
-    <div class="overdue-row" data-task-id="${t.id}">
+    <div class="overdue-row tab-${t.tab}" data-task-id="${t.id}">
       <div class="t">${escapeHtml(t.title)} <span style="opacity:.5; font-weight:400;">(${t.activityNo})</span></div>
       <div class="d">${formatDate(t.dueDate)}</div>
     </div>`).join('') : `<div class="empty-check">Nothing overdue &#127881;</div>`;
@@ -663,7 +663,7 @@ function renderHome() {
   const overdueList = document.getElementById('homeOverdueList');
   const sortedOverdue = overdue.sort((a, b) => a.dueDate < b.dueDate ? -1 : 1);
   overdueList.innerHTML = sortedOverdue.length ? sortedOverdue.map(t => `
-      <div class="overdue-row" data-task-id="${t.id}">
+      <div class="overdue-row tab-${t.tab}" data-task-id="${t.id}">
         <div class="t">${escapeHtml(t.title)} <span style="opacity:.5; font-weight:400;">(${t.activityNo})</span></div>
         <div class="d">${formatDate(t.dueDate)}</div>
       </div>`).join('') : `<div class="empty-check">Nothing overdue &#127881;</div>`;
