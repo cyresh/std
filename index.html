@@ -53,6 +53,10 @@
   .view{ display:none; animation:fade .15s ease; }
   .view.active{ display:block; }
   @keyframes fade{ from{opacity:0} to{opacity:1} }
+  @keyframes enterFromRight{ from{ transform:translateX(36px); opacity:.3; } to{ transform:translateX(0); opacity:1; } }
+  @keyframes enterFromLeft{ from{ transform:translateX(-36px); opacity:.3; } to{ transform:translateX(0); opacity:1; } }
+  .view.enter-from-right{ animation:enterFromRight .22s ease-out; }
+  .view.enter-from-left{ animation:enterFromLeft .22s ease-out; }
 
   .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:12px; }
   .card h3{ margin:0 0 10px 0; font-size:1em; color:var(--text-dim); font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
@@ -121,7 +125,9 @@
   .group-header{ font-size:.78em; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px; margin:18px 0 8px; padding-left:2px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; }
   .group-header:first-child{ margin-top:0; }
 
-  .task-card{ display:flex; align-items:flex-start; gap:12px; border-radius:14px; padding:14px; margin-bottom:8px; cursor:pointer; }
+  .task-card{ display:flex; align-items:flex-start; gap:12px; border-radius:14px; padding:14px; margin-bottom:8px; cursor:pointer; border-left:4px solid transparent; }
+  .task-card.date-a{ border-left-color:#a78bfa; }
+  .task-card.date-b{ border-left-color:#34d399; }
   #app.tab-simple .task-card{ background:var(--simple-card); color:var(--simple-text); }
   #app.tab-medium .task-card{ background:var(--medium-card); color:var(--medium-text); }
   #app.tab-heavy .task-card{ background:var(--heavy-card); color:var(--heavy-text); }

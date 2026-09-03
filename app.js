@@ -405,9 +405,22 @@ function currentTaskFallbackTab() {
   return t ? t.tab : previousTabView;
 }
 
-document.querySelectorAll('.navbtn').forEach(btn => btn.addEventListener('click', () => goToView(btn.dataset.nav)));
+function navigateWithSlide(name) {
+  const fromIdx = MAIN_TABS_ORDER.indexOf(currentTab);
+  const toIdx = MAIN_TABS_ORDER.indexOf(name);
+  goToView(name);
+  if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+    const viewEl = document.getElementById('view-' + name);
+    const cls = toIdx > fromIdx ? 'enter-from-right' : 'enter-from-left';
+    viewEl.classList.remove('enter-from-right', 'enter-from-left');
+    void viewEl.offsetWidth; // restart animation even if same class as before
+    viewEl.classList.add(cls);
+  }
+}
+
+document.querySelectorAll('.navbtn').forEach(btn => btn.addEventListener('click', () => navigateWithSlide(btn.dataset.nav)));
 backBtn.addEventListener('click', () => goToView(previousTabView));
-document.querySelectorAll('[data-goto-tab]').forEach(el => el.addEventListener('click', () => goToView(el.dataset.gotoTab)));
+document.querySelectorAll('[data-goto-tab]').forEach(el => el.addEventListener('click', () => navigateWithSlide(el.dataset.gotoTab)));
 
 document.getElementById('calendarBtn').addEventListener('click', () => {
   const now = new Date();
@@ -436,8 +449,8 @@ document.getElementById('searchBtn').addEventListener('click', () => goToView('s
     const dy = e.changedTouches[0].clientY - startY;
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
     const idx = MAIN_TABS_ORDER.indexOf(currentTab);
-    if (dx < 0 && idx < MAIN_TABS_ORDER.length - 1) goToView(MAIN_TABS_ORDER[idx + 1]);
-    else if (dx > 0 && idx > 0) goToView(MAIN_TABS_ORDER[idx - 1]);
+    if (dx < 0 && idx < MAIN_TABS_ORDER.length - 1) navigateWithSlide(MAIN_TABS_ORDER[idx + 1]);
+    else if (dx > 0 && idx > 0) navigateWithSlide(MAIN_TABS_ORDER[idx - 1]);
   }, { passive: true });
 })();
 
@@ -537,14 +550,28 @@ document.getElementById('saveCreatorsBtn').addEventListener('click', async () =>
 });
 
 // ================= Rendering: tab lists =================
+function assignDateGroups(sortedTasks) {
+  // Alternates a color class each time the due date changes, so tasks sharing
+  // a date share a color and the next distinct date flips to the other color.
+  const groups = new Map();
+  let lastDate = undefined;
+  let toggle = 1;
+  sortedTasks.forEach(t => {
+    if (t.dueDate !== lastDate) { toggle = 1 - toggle; lastDate = t.dueDate; }
+    groups.set(t.id, toggle === 0 ? 'date-a' : 'date-b');
+  });
+  return groups;
+}
+
 function renderTabList(tab) {
   const container = document.getElementById('list-' + tab);
   const tasks = allTasks.filter(t => t.tab === tab);
   const open = tasks.filter(t => t.status === 'open').sort((a, b) => (a.dueDate || '9999') < (b.dueDate || '9999') ? -1 : 1);
   const completed = tasks.filter(t => t.status === 'completed').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  const dateGroups = assignDateGroups(open);
 
   let html = `<div class="group-header">Open (${open.length})</div>`;
-  html += open.length ? open.map(t => taskCardHtml(t)).join('') : `<div class="empty-state">No open tasks</div>`;
+  html += open.length ? open.map(t => taskCardHtml(t, dateGroups.get(t.id))).join('') : `<div class="empty-state">No open tasks</div>`;
   html += `<div class="group-header" data-toggle-completed="${tab}">Completed (${completed.length}) <span>${completedCollapsed[tab] ? '&#9656;' : '&#9662;'}</span></div>`;
   if (!completedCollapsed[tab]) {
     html += completed.length ? completed.map(t => taskCardHtml(t)).join('') : `<div class="empty-state">Nothing completed yet</div>`;
@@ -566,14 +593,14 @@ function renderTabList(tab) {
   if (toggleHeader) toggleHeader.addEventListener('click', () => { completedCollapsed[tab] = !completedCollapsed[tab]; renderTabList(tab); });
 }
 
-function taskCardHtml(t) {
+function taskCardHtml(t, dateGroupClass) {
   const overdueClass = isOverdue(t) ? 'overdue' : '';
   const completedClass = t.status === 'completed' ? 'completed' : '';
   const byTag = t.createdBy ? ` &middot; ${escapeHtml(t.createdBy)}` : '';
   const timeTag = t.dueTime ? `, ${formatTime(t.dueTime)}` : '';
   const locHtml = t.location ? `<div class="task-card-loc">&#128205; ${escapeHtml(t.location)}</div>` : '';
   return `
-    <div class="task-card ${completedClass}" data-task-id="${t.id}">
+    <div class="task-card ${completedClass} ${dateGroupClass || ''}" data-task-id="${t.id}">
       <div class="task-card-main">
         <div class="task-card-no">${t.activityNo}${byTag}</div>
         <div class="task-card-title">${escapeHtml(t.title)}</div>
