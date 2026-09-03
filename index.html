@@ -50,9 +50,13 @@
   .sync-dot{ width:15px; height:15px; border-radius:50%; background:var(--good); flex-shrink:0; transition:background .2s; }
   .sync-dot.syncing{ background:var(--accent); }
   .sync-dot.offline{ background:var(--bad); }
-  .fab-add{ width:40px; height:40px; border-radius:50%; border:none; cursor:pointer; background:linear-gradient(135deg, var(--accent), #8b5cf6); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 10px rgba(59,130,246,.4); flex-shrink:0; }
+  .fab-add{ width:34px; height:34px; border-radius:50%; border:none; cursor:pointer; background:linear-gradient(135deg, var(--accent), #8b5cf6); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 10px rgba(59,130,246,.4); flex-shrink:0; }
   .fab-add:active{ opacity:.85; transform:scale(.96); }
-  .fab-add svg{ width:20px; height:20px; }
+  .fab-add svg{ width:17px; height:17px; }
+
+  #backBtn{ width:40px; height:40px; border-radius:50%; border:none; cursor:pointer; background:var(--surface-2); color:var(--accent); display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,0,0,.18); flex-shrink:0; }
+  #backBtn:active{ opacity:.85; transform:scale(.96); }
+  #backBtn svg{ width:19px; height:19px; }
 
   #views{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; padding-bottom:110px; touch-action: pan-y; }
   .view{ display:none; animation:fade .15s ease; }
@@ -249,7 +253,9 @@
 <div id="app" class="tab-home">
 
   <div id="topbar">
-    <button class="icon-btn" id="backBtn" title="Back" style="visibility:hidden;">&#8592;</button>
+    <button class="icon-btn" id="backBtn" title="Back" style="visibility:hidden;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </button>
     <div class="title" id="viewTitle">Std</div>
     <div class="topbar-actions">
       <button class="fab-add" id="quickAddBtn" title="Add task">
