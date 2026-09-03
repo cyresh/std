@@ -40,8 +40,8 @@
   #app.tab-heavy{ background:var(--heavy-wash); }
   #app.tab-home,#app.tab-settings,#app.tab-calendar,#app.tab-search,#app.tab-creatorsEditor{ background:var(--bg); }
 
-  #topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
-  #topbar .title{ font-size:1.15em; font-weight:700; letter-spacing:.2px; }
+  #topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; gap:10px; }
+  #topbar .title{ font-size:1.38em; font-weight:700; letter-spacing:.2px; flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .icon-btn{ width:40px; height:40px; border-radius:12px; border:none; background:var(--surface-2); color:var(--text); display:flex; align-items:center; justify-content:center; font-size:1.1em; cursor:pointer; }
   .icon-btn svg{ width:20px; height:20px; }
   .icon-btn:active{ background:var(--border); }
@@ -202,6 +202,19 @@
   .overdue-row .t{ font-size:.92em; font-weight:600; }
   .overdue-row .d{ font-size:.78em; color:var(--bad); font-weight:700; }
   .empty-check{ text-align:center; padding:20px 10px; color:var(--text-dim); font-size:.9em; }
+
+  /* ---------- Notification cards (rounded, like task cards) ---------- */
+  .notif-card{ display:flex; align-items:center; gap:10px; background:var(--surface-2); border-radius:14px; padding:14px; margin-bottom:8px; border-left:4px solid transparent; cursor:pointer; }
+  .notif-card:last-child{ margin-bottom:0; }
+  .notif-card.tab-simple{ border-left-color:var(--simple-accent); }
+  .notif-card.tab-medium{ border-left-color:var(--medium-accent); }
+  .notif-card.tab-heavy{ border-left-color:var(--heavy-accent); }
+  .notif-card .n-main{ flex:1; min-width:0; }
+  .notif-card .n-title{ font-size:.95em; font-weight:600; }
+  .notif-card .n-sub{ font-size:.78em; color:var(--text-dim); margin-top:3px; }
+  .notif-card .n-sub.overdue{ color:var(--bad); font-weight:700; }
+  .notif-close{ width:28px; height:28px; border-radius:50%; background:var(--surface); border:none; color:var(--text-dim); display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; font-size:1em; }
+  .notif-close:active{ background:var(--border); }
 
   .cal-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
   .cal-header .label{ font-size:1.05em; font-weight:700; }

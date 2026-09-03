@@ -81,13 +81,14 @@ window.addEventListener('offline', () => setSyncStatus('offline'));
 
 // ================= Reminders / notifications (local, app-open only) =================
 const notifiedThisSession = new Set();
+const dismissedNotifIds = new Set();
 
 function dueTodayTasks() {
   const today = todayStr();
-  return allTasks.filter(t => t.status === 'open' && t.dueDate === today);
+  return allTasks.filter(t => t.status === 'open' && t.dueDate === today && !dismissedNotifIds.has(t.id));
 }
 function overdueTasks() {
-  return allTasks.filter(isOverdue);
+  return allTasks.filter(t => isOverdue(t) && !dismissedNotifIds.has(t.id));
 }
 
 function updateNotifBadge() {
@@ -101,26 +102,44 @@ function updateNotifBadge() {
   }
 }
 
+function notifCardHtml(t, subText, subClass) {
+  return `
+    <div class="notif-card tab-${t.tab}" data-task-id="${t.id}">
+      <div class="n-main">
+        <div class="n-title">${escapeHtml(t.title)} <span style="opacity:.5; font-weight:400;">(${t.activityNo})</span></div>
+        <div class="n-sub ${subClass || ''}">${subText}</div>
+      </div>
+      <button class="notif-close" data-dismiss-id="${t.id}" title="Dismiss">&#10005;</button>
+    </div>`;
+}
+
 function renderNotificationsView() {
   const todayList = document.getElementById('notifDueTodayList');
   const overdueList = document.getElementById('notifOverdueList');
   const today = dueTodayTasks();
   const overdue = overdueTasks();
 
-  todayList.innerHTML = today.length ? today.map(t => `
-    <div class="overdue-row tab-${t.tab}" data-task-id="${t.id}">
-      <div class="t">${escapeHtml(t.title)} <span style="opacity:.5; font-weight:400;">(${t.activityNo})</span></div>
-      <div class="d" style="color:var(--text-dim);">${t.dueTime ? formatTime(t.dueTime) : ''}</div>
-    </div>`).join('') : `<div class="empty-check">Nothing due today</div>`;
+  todayList.innerHTML = today.length
+    ? today.map(t => notifCardHtml(t, t.dueTime ? formatTime(t.dueTime) : 'No specific time')).join('')
+    : `<div class="empty-check">Nothing due today</div>`;
 
-  overdueList.innerHTML = overdue.length ? overdue.map(t => `
-    <div class="overdue-row tab-${t.tab}" data-task-id="${t.id}">
-      <div class="t">${escapeHtml(t.title)} <span style="opacity:.5; font-weight:400;">(${t.activityNo})</span></div>
-      <div class="d">${formatDate(t.dueDate)}</div>
-    </div>`).join('') : `<div class="empty-check">Nothing overdue &#127881;</div>`;
+  overdueList.innerHTML = overdue.length
+    ? overdue.map(t => notifCardHtml(t, formatDate(t.dueDate), 'overdue')).join('')
+    : `<div class="empty-check">Nothing overdue &#127881;</div>`;
 
   document.querySelectorAll('#view-notifications [data-task-id]').forEach(el => {
-    el.addEventListener('click', () => openTaskDetail(el.dataset.taskId));
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-dismiss-id]')) return;
+      openTaskDetail(el.dataset.taskId);
+    });
+  });
+  document.querySelectorAll('#view-notifications [data-dismiss-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismissedNotifIds.add(btn.dataset.dismissId);
+      renderNotificationsView();
+      updateNotifBadge();
+    });
   });
 }
 
