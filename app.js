@@ -220,11 +220,8 @@ async function startLockFlow() {
 }
 document.getElementById('lockRetryBtn').addEventListener('click', () => startLockFlow());
 
-document.getElementById('keypad').addEventListener('click', (e) => {
+function handleLockKey(k) {
   if (lockMode === 'loading') return;
-  const btn = e.target.closest('.key');
-  if (!btn || btn.classList.contains('empty')) return;
-  const k = btn.dataset.k;
   if (k === 'del') {
     enteredDigits = enteredDigits.slice(0, -1);
     renderPinDots(pinDots, enteredDigits.length);
@@ -234,6 +231,12 @@ document.getElementById('keypad').addEventListener('click', (e) => {
   enteredDigits += k;
   renderPinDots(pinDots, enteredDigits.length);
   if (enteredDigits.length === PIN_LEN) handlePinComplete();
+}
+
+document.getElementById('keypad').addEventListener('click', (e) => {
+  const btn = e.target.closest('.key');
+  if (!btn || btn.classList.contains('empty')) return;
+  handleLockKey(btn.dataset.k);
 });
 
 async function handlePinComplete() {
@@ -302,10 +305,7 @@ document.getElementById('changePinLink').addEventListener('click', () => {
 });
 document.getElementById('cancelChangePin').addEventListener('click', () => changePinModal.classList.add('hidden'));
 
-document.getElementById('changeKeypad').addEventListener('click', async (e) => {
-  const btn = e.target.closest('.key');
-  if (!btn || btn.classList.contains('empty')) return;
-  const k = btn.dataset.k;
+async function handleChangeKey(k) {
   if (k === 'del') {
     changePinDigits = changePinDigits.slice(0, -1);
     renderPinDots(newPinDots, changePinDigits.length);
@@ -356,6 +356,30 @@ document.getElementById('changeKeypad').addEventListener('click', async (e) => {
     changePinHeading.textContent = 'Enter new PIN';
     changePinDigits = '';
     setTimeout(() => renderPinDots(newPinDots, 0), 350);
+  }
+}
+
+document.getElementById('changeKeypad').addEventListener('click', (e) => {
+  const btn = e.target.closest('.key');
+  if (!btn || btn.classList.contains('empty')) return;
+  handleChangeKey(btn.dataset.k);
+});
+
+// ---- Keyboard support (desktop): digits 0-9 and Backspace for whichever PIN entry is on screen ----
+document.addEventListener('keydown', (e) => {
+  const isDigit = /^[0-9]$/.test(e.key);
+  const isBackspace = e.key === 'Backspace';
+  if (!isDigit && !isBackspace) return;
+  const k = isBackspace ? 'del' : e.key;
+
+  if (!changePinModal.classList.contains('hidden')) {
+    e.preventDefault();
+    handleChangeKey(k);
+    return;
+  }
+  if (!lockscreen.classList.contains('hidden')) {
+    e.preventDefault();
+    handleLockKey(k);
   }
 });
 
