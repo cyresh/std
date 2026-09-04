@@ -71,13 +71,34 @@ document.getElementById('lightThemeToggle').addEventListener('change', (e) => {
 
 // ================= Sync status dot =================
 const syncDot = document.getElementById('syncDot');
+let currentSyncStatus = 'synced';
+let lastSyncTime = null;
 function setSyncStatus(status) {
+  currentSyncStatus = status;
   syncDot.classList.remove('syncing', 'offline');
   if (status === 'syncing') syncDot.classList.add('syncing');
   else if (status === 'offline') syncDot.classList.add('offline');
+  else lastSyncTime = Date.now();
 }
 window.addEventListener('online', () => setSyncStatus('synced'));
 window.addEventListener('offline', () => setSyncStatus('offline'));
+
+let syncTooltipTimer = null;
+document.getElementById('syncDotWrap').addEventListener('click', () => {
+  const tooltip = document.getElementById('syncTooltip');
+  let msg;
+  if (currentSyncStatus === 'offline') {
+    msg = "Offline — showing cached data" + (lastSyncTime ? ` from ${formatTs(lastSyncTime)}` : '');
+  } else if (currentSyncStatus === 'syncing') {
+    msg = 'Syncing changes...';
+  } else {
+    msg = lastSyncTime ? `Synced — last update ${formatTs(lastSyncTime)}` : 'Synced';
+  }
+  tooltip.textContent = msg;
+  tooltip.style.display = 'block';
+  clearTimeout(syncTooltipTimer);
+  syncTooltipTimer = setTimeout(() => { tooltip.style.display = 'none'; }, 3500);
+});
 
 // ================= Reminders / notifications (local, app-open only) =================
 const notifiedThisSession = new Set();
@@ -201,6 +222,61 @@ function resetPinEntry() {
   renderPinDots(pinDots, 0);
 }
 
+// ---- Brute-force lockout: 3 wrong PINs -> 5 min lock, doubling each further miss ----
+const LOCKOUT_BASE_MIN = 5;
+function getFails() { return parseInt(localStorage.getItem('std_pin_fails') || '0', 10); }
+function setFails(n) { localStorage.setItem('std_pin_fails', String(n)); }
+function getLockUntil() { return parseInt(localStorage.getItem('std_pin_lock_until') || '0', 10); }
+function setLockUntil(ts) { if (ts) localStorage.setItem('std_pin_lock_until', String(ts)); else localStorage.removeItem('std_pin_lock_until'); }
+function activeLockUntil() { const u = getLockUntil(); return u && u > Date.now() ? u : 0; }
+
+function registerPinFailure() {
+  const fails = getFails() + 1;
+  setFails(fails);
+  if (fails >= 3) {
+    const minutes = LOCKOUT_BASE_MIN * Math.pow(2, fails - 3);
+    const until = Date.now() + minutes * 60000;
+    setLockUntil(until);
+    return until;
+  }
+  return 0;
+}
+function registerPinSuccess() {
+  setFails(0);
+  setLockUntil(0);
+}
+
+let lockoutInterval = null;
+function runLockoutCountdown(until, { onTick, onExpire }) {
+  clearInterval(lockoutInterval);
+  const tick = () => {
+    const remain = until - Date.now();
+    if (remain <= 0) { clearInterval(lockoutInterval); onExpire(); return; }
+    const mm = Math.floor(remain / 60000);
+    const ss = Math.floor((remain % 60000) / 1000);
+    onTick(`${mm}:${String(ss).padStart(2, '0')}`);
+  };
+  tick();
+  lockoutInterval = setInterval(tick, 1000);
+}
+
+function enterMainLockout(until) {
+  lockMode = 'lockedout';
+  lockTitle.textContent = 'Too many attempts';
+  document.getElementById('lockRetryBtn').style.display = 'none';
+  enteredDigits = '';
+  renderPinDots(pinDots, 0);
+  runLockoutCountdown(until, {
+    onTick: (t) => { lockError.textContent = `Try again in ${t}`; },
+    onExpire: () => {
+      lockMode = 'verify';
+      lockTitle.textContent = 'Enter PIN';
+      lockError.textContent = '';
+      resetPinEntry();
+    }
+  });
+}
+
 async function startLockFlow() {
   lockMode = 'loading';
   lockTitle.textContent = 'Loading...';
@@ -233,6 +309,9 @@ async function startLockFlow() {
     lockscreen.classList.add('hidden');
     return;
   }
+  const lockUntil = activeLockUntil();
+  if (lockUntil) { enterMainLockout(lockUntil); return; }
+
   lockMode = 'verify';
   lockTitle.textContent = 'Enter PIN';
   resetPinEntry();
@@ -240,7 +319,7 @@ async function startLockFlow() {
 document.getElementById('lockRetryBtn').addEventListener('click', () => startLockFlow());
 
 function handleLockKey(k) {
-  if (lockMode === 'loading') return;
+  if (lockMode === 'loading' || lockMode === 'lockedout') return;
   if (k === 'del') {
     enteredDigits = enteredDigits.slice(0, -1);
     renderPinDots(pinDots, enteredDigits.length);
@@ -273,6 +352,7 @@ async function handlePinComplete() {
       try {
         await setGlobalPinHash(hash);
         globalPinHash = hash;
+        registerPinSuccess();
         localStorage.setItem('std_last_unlock_date', todayStr());
         lockscreen.classList.add('hidden');
       } catch (err) {
@@ -290,13 +370,19 @@ async function handlePinComplete() {
     return;
   }
   if (simpleHash(enteredDigits) === globalPinHash) {
+    registerPinSuccess();
     localStorage.setItem('std_last_unlock_date', todayStr());
     lockscreen.classList.add('hidden');
   } else {
-    lockError.textContent = 'Incorrect PIN';
-    shakeDots(pinDots);
-    enteredDigits = '';
-    setTimeout(() => renderPinDots(pinDots, 0), 350);
+    const until = registerPinFailure();
+    if (until) {
+      enterMainLockout(until);
+    } else {
+      lockError.textContent = 'Incorrect PIN';
+      shakeDots(pinDots);
+      enteredDigits = '';
+      setTimeout(() => renderPinDots(pinDots, 0), 350);
+    }
   }
 }
 
@@ -305,7 +391,7 @@ const changePinModal = document.getElementById('changePinModal');
 const newPinDots = document.getElementById('newPinDots');
 const changePinError = document.getElementById('changePinError');
 const changePinHeading = document.getElementById('changePinHeading');
-let changePinStage = 'old'; // 'old' | 'first' | 'confirm'
+let changePinStage = 'old'; // 'old' | 'first' | 'confirm' | 'lockedout'
 let changePinFirst = '';
 let changePinDigits = '';
 
@@ -318,13 +404,33 @@ function resetChangePinFlow() {
   renderPinDots(newPinDots, 0);
 }
 
+function enterChangeLockout(until) {
+  changePinStage = 'lockedout';
+  changePinHeading.textContent = 'Too many attempts';
+  changePinDigits = '';
+  renderPinDots(newPinDots, 0);
+  runLockoutCountdown(until, {
+    onTick: (t) => { changePinError.textContent = `Try again in ${t}`; },
+    onExpire: () => {
+      changePinStage = 'old';
+      changePinHeading.textContent = 'Enter current PIN';
+      changePinError.textContent = '';
+      changePinDigits = '';
+      renderPinDots(newPinDots, 0);
+    }
+  });
+}
+
 document.getElementById('changePinLink').addEventListener('click', () => {
   resetChangePinFlow();
   changePinModal.classList.remove('hidden');
+  const lockUntil = activeLockUntil();
+  if (lockUntil) enterChangeLockout(lockUntil);
 });
 document.getElementById('cancelChangePin').addEventListener('click', () => changePinModal.classList.add('hidden'));
 
 async function handleChangeKey(k) {
+  if (changePinStage === 'lockedout') return;
   if (k === 'del') {
     changePinDigits = changePinDigits.slice(0, -1);
     renderPinDots(newPinDots, changePinDigits.length);
@@ -337,15 +443,21 @@ async function handleChangeKey(k) {
 
   if (changePinStage === 'old') {
     if (simpleHash(changePinDigits) === globalPinHash) {
+      registerPinSuccess();
       changePinStage = 'first';
       changePinHeading.textContent = 'Enter new PIN';
       changePinDigits = '';
       setTimeout(() => renderPinDots(newPinDots, 0), 150);
     } else {
-      changePinError.textContent = 'Incorrect current PIN';
-      shakeDots(newPinDots);
-      changePinDigits = '';
-      setTimeout(() => renderPinDots(newPinDots, 0), 350);
+      const until = registerPinFailure();
+      if (until) {
+        enterChangeLockout(until);
+      } else {
+        changePinError.textContent = 'Incorrect current PIN';
+        shakeDots(newPinDots);
+        changePinDigits = '';
+        setTimeout(() => renderPinDots(newPinDots, 0), 350);
+      }
     }
     return;
   }
@@ -406,8 +518,8 @@ document.addEventListener('keydown', (e) => {
 const viewTitleEl = document.getElementById('viewTitle');
 const appEl = document.getElementById('app');
 const backBtn = document.getElementById('backBtn');
-const SUB_VIEWS = ['taskDetail', 'settings', 'calendar', 'search', 'creatorsEditor', 'notifications'];
-const FIXED_LABELS = { home: 'Std', settings: 'Settings', calendar: 'Calendar', search: 'Search', creatorsEditor: 'Task creators', notifications: 'Notifications' };
+const SUB_VIEWS = ['taskDetail', 'settings', 'calendar', 'search', 'creatorsEditor', 'notifications', 'tabNamesEditor', 'helpDetail', 'aboutDetail'];
+const FIXED_LABELS = { home: 'Std', settings: 'Settings', calendar: 'Calendar', search: 'Search', creatorsEditor: 'Task creators', notifications: 'Notifications', tabNamesEditor: 'Tab names', helpDetail: 'Help', aboutDetail: 'About' };
 
 function labelFor(name) {
   if (['simple', 'medium', 'heavy'].includes(name)) return tabLabels[name] || capitalize(name);
@@ -440,6 +552,8 @@ function goToView(name) {
   if (name === 'settings') populateSettingsFields();
   if (name === 'creatorsEditor') openCreatorsEditor();
   if (name === 'notifications') renderNotificationsView();
+  if (name === 'tabNamesEditor') populateSettingsFields();
+  if (name === 'aboutDetail') renderAboutDetail();
   if (name === 'search') document.getElementById('searchInput').focus();
 }
 
@@ -475,26 +589,126 @@ document.getElementById('settingsBtn').addEventListener('click', () => goToView(
 document.getElementById('notifBtn').addEventListener('click', () => goToView('notifications'));
 document.getElementById('searchBtn').addEventListener('click', () => goToView('search'));
 
-// ---- Swipe navigation between Home/Simple/Medium/Heavy ----
+// ---- Swipe navigation between Home/Simple/Medium/Heavy: real-time drag-follow ----
+function renderMainTabContent(name) {
+  if (name === 'home') renderHome();
+  else renderTabList(name);
+}
+
+function resetViewInlineStyles(el) {
+  if (!el) return;
+  el.style.position = '';
+  el.style.top = '';
+  el.style.left = '';
+  el.style.width = '';
+  el.style.height = '';
+  el.style.transform = '';
+  el.style.transition = '';
+  el.style.zIndex = '';
+  el.style.overflowY = '';
+  el.style.willChange = '';
+}
+
 (function setupSwipe() {
-  const el = document.getElementById('views');
-  let startX = 0, startY = 0, tracking = false;
-  el.addEventListener('touchstart', (e) => {
-    if (!MAIN_TABS_ORDER.includes(currentTab)) { tracking = false; return; }
+  const viewsEl = document.getElementById('views');
+  let dragging = false, isHorizontal = null;
+  let startX = 0, startY = 0, dx = 0, widthPx = 0;
+  let curEl = null, prevEl = null, nextEl = null, prevName = null, nextName = null;
+
+  function cleanup() {
+    resetViewInlineStyles(curEl);
+    resetViewInlineStyles(prevEl);
+    resetViewInlineStyles(nextEl);
+    if (prevEl) prevEl.classList.remove('active');
+    if (nextEl) nextEl.classList.remove('active');
+    curEl = prevEl = nextEl = null;
+    prevName = nextName = null;
+  }
+
+  viewsEl.addEventListener('touchstart', (e) => {
+    if (!MAIN_TABS_ORDER.includes(currentTab)) { dragging = false; return; }
+    dragging = true;
+    isHorizontal = null;
+    dx = 0;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
-    tracking = true;
+    widthPx = viewsEl.clientWidth;
   }, { passive: true });
-  el.addEventListener('touchend', (e) => {
-    if (!tracking) return;
-    tracking = false;
-    const dx = e.changedTouches[0].clientX - startX;
-    const dy = e.changedTouches[0].clientY - startY;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    const idx = MAIN_TABS_ORDER.indexOf(currentTab);
-    if (dx < 0 && idx < MAIN_TABS_ORDER.length - 1) navigateWithSlide(MAIN_TABS_ORDER[idx + 1]);
-    else if (dx > 0 && idx > 0) navigateWithSlide(MAIN_TABS_ORDER[idx - 1]);
-  }, { passive: true });
+
+  viewsEl.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+    const rawDx = x - startX;
+    const rawDy = y - startY;
+
+    if (isHorizontal === null) {
+      if (Math.abs(rawDx) < 8 && Math.abs(rawDy) < 8) return;
+      isHorizontal = Math.abs(rawDx) > Math.abs(rawDy) * 1.3;
+      if (!isHorizontal) { dragging = false; return; }
+
+      const idx = MAIN_TABS_ORDER.indexOf(currentTab);
+      prevName = idx > 0 ? MAIN_TABS_ORDER[idx - 1] : null;
+      nextName = idx < MAIN_TABS_ORDER.length - 1 ? MAIN_TABS_ORDER[idx + 1] : null;
+      curEl = document.getElementById('view-' + currentTab);
+      curEl.style.position = 'relative';
+      curEl.style.zIndex = '2';
+      curEl.style.willChange = 'transform';
+      viewsEl.style.position = 'relative';
+
+      if (rawDx > 0 && prevName) {
+        prevEl = document.getElementById('view-' + prevName);
+        renderMainTabContent(prevName);
+        prevEl.classList.add('active');
+        Object.assign(prevEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(-100%)', zIndex: '1', animation: 'none' });
+      } else if (rawDx < 0 && nextName) {
+        nextEl = document.getElementById('view-' + nextName);
+        renderMainTabContent(nextName);
+        nextEl.classList.add('active');
+        Object.assign(nextEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(100%)', zIndex: '1', animation: 'none' });
+      }
+    }
+
+    if (!isHorizontal) return;
+    e.preventDefault();
+    let clamped = rawDx;
+    if ((rawDx > 0 && !prevName) || (rawDx < 0 && !nextName)) clamped = rawDx * 0.25;
+    dx = clamped;
+    curEl.style.transition = 'none';
+    curEl.style.transform = `translateX(${clamped}px)`;
+    if (prevEl) prevEl.style.transform = `translateX(calc(-100% + ${clamped}px))`;
+    if (nextEl) nextEl.style.transform = `translateX(calc(100% + ${clamped}px))`;
+  }, { passive: false });
+
+  viewsEl.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    if (!isHorizontal) { isHorizontal = null; return; }
+    isHorizontal = null;
+    if (!curEl) return;
+
+    const threshold = widthPx * 0.28;
+    let target = null;
+    if (dx > threshold && prevName) target = prevName;
+    else if (dx < -threshold && nextName) target = nextName;
+
+    const dur = 250;
+    if (target) {
+      const finalCur = dx > 0 ? widthPx : -widthPx;
+      curEl.style.transition = `transform ${dur}ms ease-out`;
+      curEl.style.transform = `translateX(${finalCur}px)`;
+      const winner = target === prevName ? prevEl : nextEl;
+      winner.style.transition = `transform ${dur}ms ease-out`;
+      winner.style.transform = 'translateX(0px)';
+      setTimeout(() => { cleanup(); goToView(target); }, dur + 30);
+    } else {
+      curEl.style.transition = `transform ${dur}ms ease-out`;
+      curEl.style.transform = 'translateX(0px)';
+      if (prevEl) { prevEl.style.transition = `transform ${dur}ms ease-out`; prevEl.style.transform = 'translateX(-100%)'; }
+      if (nextEl) { nextEl.style.transition = `transform ${dur}ms ease-out`; nextEl.style.transform = 'translateX(100%)'; }
+      setTimeout(cleanup, dur + 30);
+    }
+  });
 })();
 
 // ================= Creator chips (add/edit task) =================
@@ -506,14 +720,63 @@ function renderCreatorChips(container, selected, onSelect) {
 }
 
 // ================= Settings =================
+const CHANGELOG = [
+  {
+    version: '1.3.0', date: 'Sept 2026', notes: [
+      'Bold bottom-nav labels; home summary numbers color-coded (blue/green/red)',
+      'Home progress bars reordered (completed bar on top)',
+      'Delete button added to task notes',
+      'Sync dot now has a colored ring — tap it for last-sync status',
+      'Settings reorganized: Theme, Change PIN, Tab names, Help, and About are now separate one-line entries with their own detail pages',
+      '3-strike PIN lockout with doubling wait time (5, 10, 20... minutes)',
+      'Faster repeat loads via Firestore offline caching',
+      'Real-time drag-following swipe animation between tabs',
+      'Mobile: title hides on narrow screens to fit the icon row; Add Task button made more compact'
+    ]
+  },
+  {
+    version: '1.2.0', date: 'Earlier', notes: [
+      'Search, swipe navigation, editable notes, 6-digit shared PIN',
+      'Expandable task creators list, renameable tabs, optional time/location fields',
+      'Reminders bell and in-app notification toggle',
+      'Quick-add button, colored task-list date grouping, redesigned icons'
+    ]
+  },
+  {
+    version: '1.0.0', date: 'Initial build', notes: [
+      'Home dashboard, Simple/Medium/Heavy groups, calendar view, cloud sync, PIN lock'
+    ]
+  }
+];
+
+function renderAboutDetail() {
+  document.getElementById('changelogList').innerHTML = CHANGELOG.map(v => `
+    <div style="margin-bottom:14px;">
+      <div style="font-weight:700; font-size:.9em;">v${v.version} <span style="color:var(--text-dim); font-weight:400;">&mdash; ${v.date}</span></div>
+      <ul style="margin:6px 0 0 18px; padding:0; font-size:.85em; color:var(--text-dim); line-height:1.6;">
+        ${v.notes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}
+      </ul>
+    </div>`).join('');
+}
+
+function initAboutVersion() {
+  const v = CHANGELOG[0].version;
+  document.getElementById('aboutText').textContent = `Std · Version ${v}`;
+  document.getElementById('aboutSummary').textContent = `Version ${v}`;
+}
+
 function populateSettingsFields() {
   document.getElementById('creatorsSummary').textContent = creatorNames.join(', ');
+  document.getElementById('tabNamesSummary').textContent = [tabLabels.simple, tabLabels.medium, tabLabels.heavy].join(', ');
   document.getElementById('tabLabelSimpleInput').value = tabLabels.simple;
   document.getElementById('tabLabelMediumInput').value = tabLabels.medium;
   document.getElementById('tabLabelHeavyInput').value = tabLabels.heavy;
 }
 
 document.getElementById('creatorsSummaryLink').addEventListener('click', () => goToView('creatorsEditor'));
+document.getElementById('tabNamesSummaryLink').addEventListener('click', () => goToView('tabNamesEditor'));
+document.getElementById('helpSummaryLink').addEventListener('click', () => goToView('helpDetail'));
+document.getElementById('aboutSummaryLink').addEventListener('click', () => goToView('aboutDetail'));
 
 document.getElementById('saveTabLabelsBtn').addEventListener('click', async () => {
   const simple = document.getElementById('tabLabelSimpleInput').value.trim() || 'Simple';
@@ -521,6 +784,7 @@ document.getElementById('saveTabLabelsBtn').addEventListener('click', async () =
   const heavy = document.getElementById('tabLabelHeavyInput').value.trim() || 'Heavy';
   await setTabLabels({ simple, medium, heavy });
   flashSaved('tabLabelsSavedMsg');
+  populateSettingsFields();
 });
 
 function flashSaved(elId) {
@@ -539,6 +803,7 @@ function applyTabLabelsToUI() {
   document.getElementById('editGroupOptionSimple').textContent = tabLabels.simple;
   document.getElementById('editGroupOptionMedium').textContent = tabLabels.medium;
   document.getElementById('editGroupOptionHeavy').textContent = tabLabels.heavy;
+  document.getElementById('tabNamesSummary').textContent = [tabLabels.simple, tabLabels.medium, tabLabels.heavy].join(', ');
   if (['simple', 'medium', 'heavy'].includes(currentTab)) viewTitleEl.textContent = labelFor(currentTab);
 }
 
@@ -783,7 +1048,10 @@ function renderNotes(t) {
           <div class="ts">${formatTs(n.ts)}</div>
           <div class="txt" data-view>${escapeHtml(n.text)}</div>
         </div>
-        <button class="note-edit-btn" data-edit-ts="${n.ts}">Edit</button>
+        <div style="display:flex; gap:4px; flex-shrink:0;">
+          <button class="note-edit-btn" data-edit-ts="${n.ts}">Edit</button>
+          <button class="note-edit-btn note-del-btn" data-del-ts="${n.ts}" title="Delete note">&#10005;</button>
+        </div>
       </div>
       <div class="note-edit-row" style="display:none;">
         <input type="text" value="${escapeHtml(n.text)}">
@@ -806,6 +1074,15 @@ function renderNotes(t) {
       if (!newText) return;
       const task = allTasks.find(t => t.id === currentTaskId);
       const updatedNotes = (task.notes || []).map(n => n.ts === ts ? { ...n, text: newText } : n);
+      await replaceTaskNotes(currentTaskId, updatedNotes);
+    });
+  });
+  list.querySelectorAll('[data-del-ts]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this note?')) return;
+      const ts = Number(btn.dataset.delTs);
+      const task = allTasks.find(t => t.id === currentTaskId);
+      const updatedNotes = (task.notes || []).filter(n => n.ts !== ts);
       await replaceTaskNotes(currentTaskId, updatedNotes);
     });
   });
@@ -974,5 +1251,6 @@ window.addEventListener('appinstalled', () => {
 // ================= Init =================
 initTheme();
 initNotifToggle();
+initAboutVersion();
 lockscreen.classList.remove('hidden');
 goToView('home');
