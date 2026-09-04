@@ -1204,7 +1204,12 @@ document.getElementById('addNoteBtn').addEventListener('click', async () => {
 
 document.getElementById('toggleCompleteBtn').addEventListener('click', async () => {
   const t = allTasks.find(t => t.id === currentTaskId);
-  await setTaskStatus(currentTaskId, t.status === 'open' ? 'completed' : 'open');
+  const wasOpen = t.status === 'open';
+  const targetTab = t.tab;
+  await setTaskStatus(currentTaskId, wasOpen ? 'completed' : 'open');
+  if (wasOpen) {
+    navigateWithSlide(targetTab);
+  }
 });
 
 // ================= Edit Task modal =================
