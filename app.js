@@ -15,9 +15,18 @@ let editingCreatorNames = [];
 const MAIN_TABS_ORDER = ['home', 'simple', 'medium', 'heavy'];
 
 // ================= Utilities =================
+// Formats a Date as YYYY-MM-DD using the device's LOCAL calendar date, not UTC.
+// toISOString() converts to UTC first, so anywhere in India (UTC+5:30) between
+// midnight and 5:30am it would report the previous day's date instead of today's.
+function toLocalDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function todayStr() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return toLocalDateStr(new Date());
 }
 
 function formatDate(dateStr) {
@@ -61,7 +70,7 @@ function groupTasksByDate(tasks) {
   const thisMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const nextMonthEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0);
 
-  const toStr = (d) => d.toISOString().slice(0, 10);
+  const toStr = (d) => toLocalDateStr(d);
   const todayS = toStr(today), tomorrowS = toStr(tomorrow);
   const thisWeekEndS = toStr(thisWeekEnd), nextWeekStartS = toStr(nextWeekStart), nextWeekEndS = toStr(nextWeekEnd);
   const thisMonthEndS = toStr(thisMonthEnd), nextMonthEndS = toStr(nextMonthEnd);
