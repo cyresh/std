@@ -656,6 +656,7 @@ function resetViewInlineStyles(el) {
   let dragging = false, isHorizontal = null;
   let startX = 0, startY = 0, dx = 0, widthPx = 0;
   let curEl = null, prevEl = null, nextEl = null, prevName = null, nextName = null;
+  let primed = false;
 
   function cleanup() {
     resetViewInlineStyles(curEl);
@@ -665,16 +666,39 @@ function resetViewInlineStyles(el) {
     if (nextEl) nextEl.classList.remove('active');
     curEl = prevEl = nextEl = null;
     prevName = nextName = null;
+    primed = false;
   }
 
   viewsEl.addEventListener('touchstart', (e) => {
     if (!MAIN_TABS_ORDER.includes(currentTab)) { dragging = false; return; }
     dragging = true;
     isHorizontal = null;
+    primed = false;
     dx = 0;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     widthPx = viewsEl.clientWidth;
+
+    // Render the neighboring tabs' real content now, off the critical path,
+    // instead of waiting until the drag is confirmed horizontal. Rendering
+    // a full task list mid-touchmove could block the frame long enough that
+    // the screen looked "stuck" on the current tab while dragging, with the
+    // real neighbor only popping in once the swipe finished. Priming here
+    // (via rAF, so it never blocks touchstart itself) means the content is
+    // already painted and ready by the time any drag distance registers.
+    const idx = MAIN_TABS_ORDER.indexOf(currentTab);
+    prevName = idx > 0 ? MAIN_TABS_ORDER[idx - 1] : null;
+    nextName = idx < MAIN_TABS_ORDER.length - 1 ? MAIN_TABS_ORDER[idx + 1] : null;
+    curEl = document.getElementById('view-' + currentTab);
+    prevEl = prevName ? document.getElementById('view-' + prevName) : null;
+    nextEl = nextName ? document.getElementById('view-' + nextName) : null;
+
+    requestAnimationFrame(() => {
+      if (!dragging) return; // gesture already ended (e.g. a quick tap)
+      if (prevEl) renderMainTabContent(prevName);
+      if (nextEl) renderMainTabContent(nextName);
+      primed = true;
+    });
   }, { passive: true });
 
   viewsEl.addEventListener('touchmove', (e) => {
@@ -687,25 +711,19 @@ function resetViewInlineStyles(el) {
     if (isHorizontal === null) {
       if (Math.abs(rawDx) < 8 && Math.abs(rawDy) < 8) return;
       isHorizontal = Math.abs(rawDx) > Math.abs(rawDy) * 1.3;
-      if (!isHorizontal) { dragging = false; return; }
+      if (!isHorizontal) { dragging = false; cleanup(); return; }
+      if (!primed) { if (prevEl) renderMainTabContent(prevName); if (nextEl) renderMainTabContent(nextName); primed = true; }
 
-      const idx = MAIN_TABS_ORDER.indexOf(currentTab);
-      prevName = idx > 0 ? MAIN_TABS_ORDER[idx - 1] : null;
-      nextName = idx < MAIN_TABS_ORDER.length - 1 ? MAIN_TABS_ORDER[idx + 1] : null;
-      curEl = document.getElementById('view-' + currentTab);
       curEl.style.position = 'relative';
       curEl.style.zIndex = '2';
       curEl.style.willChange = 'transform';
       viewsEl.style.position = 'relative';
 
-      if (rawDx > 0 && prevName) {
-        prevEl = document.getElementById('view-' + prevName);
-        renderMainTabContent(prevName);
+      if (prevEl) {
         prevEl.classList.add('active');
         Object.assign(prevEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(-100%)', zIndex: '1', animation: 'none' });
-      } else if (rawDx < 0 && nextName) {
-        nextEl = document.getElementById('view-' + nextName);
-        renderMainTabContent(nextName);
+      }
+      if (nextEl) {
         nextEl.classList.add('active');
         Object.assign(nextEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(100%)', zIndex: '1', animation: 'none' });
       }
@@ -718,14 +736,14 @@ function resetViewInlineStyles(el) {
     dx = clamped;
     curEl.style.transition = 'none';
     curEl.style.transform = `translateX(${clamped}px)`;
-    if (prevEl) prevEl.style.transform = `translateX(calc(-100% + ${clamped}px))`;
-    if (nextEl) nextEl.style.transform = `translateX(calc(100% + ${clamped}px))`;
+    if (rawDx > 0 && prevEl) prevEl.style.transform = `translateX(calc(-100% + ${clamped}px))`;
+    if (rawDx < 0 && nextEl) nextEl.style.transform = `translateX(calc(100% + ${clamped}px))`;
   }, { passive: false });
 
   viewsEl.addEventListener('touchend', () => {
     if (!dragging) return;
     dragging = false;
-    if (!isHorizontal) { isHorizontal = null; return; }
+    if (!isHorizontal) { isHorizontal = null; cleanup(); return; }
     isHorizontal = null;
     if (!curEl) return;
 
@@ -750,6 +768,13 @@ function resetViewInlineStyles(el) {
       if (nextEl) { nextEl.style.transition = `transform ${dur}ms ease-out`; nextEl.style.transform = 'translateX(100%)'; }
       setTimeout(cleanup, dur + 30);
     }
+  });
+
+  viewsEl.addEventListener('touchcancel', () => {
+    if (!dragging) return;
+    dragging = false;
+    isHorizontal = null;
+    cleanup();
   });
 })();
 
