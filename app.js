@@ -653,11 +653,21 @@ function resetViewInlineStyles(el) {
   el.style.left = '';
   el.style.width = '';
   el.style.height = '';
+  el.style.minHeight = '';
+  el.style.overflow = '';
   el.style.transform = '';
   el.style.transition = '';
   el.style.zIndex = '';
   el.style.overflowY = '';
   el.style.willChange = '';
+  el.style.background = '';
+}
+
+const TAB_WASH_VAR = { simple: '--simple-wash', medium: '--medium-wash', heavy: '--heavy-wash' };
+function tabWashColor(name) {
+  const varName = TAB_WASH_VAR[name];
+  if (!varName) return '';
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
 }
 
 (function setupSwipe() {
@@ -725,15 +735,16 @@ function resetViewInlineStyles(el) {
       curEl.style.position = 'relative';
       curEl.style.zIndex = '2';
       curEl.style.willChange = 'transform';
+      curEl.style.background = tabWashColor(currentTab);
       viewsEl.style.position = 'relative';
 
       if (prevEl) {
         prevEl.classList.add('active');
-        Object.assign(prevEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(-100%)', zIndex: '1', animation: 'none' });
+        Object.assign(prevEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(-100%)', zIndex: '1', animation: 'none', background: tabWashColor(prevName) });
       }
       if (nextEl) {
         nextEl.classList.add('active');
-        Object.assign(nextEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(100%)', zIndex: '1', animation: 'none' });
+        Object.assign(nextEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(100%)', zIndex: '1', animation: 'none', background: tabWashColor(nextName) });
       }
     }
 
