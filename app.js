@@ -1125,8 +1125,9 @@ function renderHomeUpcoming(openNonOverdueTasks) {
 
 // ================= Search =================
 let searchStatusFilters = new Set(); // subset of {'open','completed'}; empty = no status filter
+let searchToggleFilters = new Set(); // subset of {'loc','time'}; a plain "has a value" filter, since
+                                      // locations/times can be many different values (unlike creators)
 let searchByFilter = null;           // a creator name, or null
-let searchLocFilter = null;          // a location string, or null
 
 function updateSearchFilterChipStyles() {
   document.querySelectorAll('#searchFilterRow .chip').forEach(btn => {
@@ -1135,10 +1136,9 @@ function updateSearchFilterChipStyles() {
     if (f === 'open') active = searchStatusFilters.has('open');
     else if (f === 'completed') active = searchStatusFilters.has('completed');
     else if (f === 'by') active = !!searchByFilter;
-    else if (f === 'loc') active = !!searchLocFilter;
+    else if (f === 'loc' || f === 'time') active = searchToggleFilters.has(f);
     btn.classList.toggle('selected', active);
     if (f === 'by') btn.textContent = searchByFilter ? `By: ${searchByFilter}` : 'By';
-    if (f === 'loc') btn.textContent = searchLocFilter ? `Loc: ${searchLocFilter}` : 'Loc';
   });
 }
 
@@ -1155,57 +1155,42 @@ function renderSearchByRow() {
   }));
 }
 
-function renderSearchLocRow() {
-  const row = document.getElementById('searchLocRow');
-  const locations = [...new Set(allTasks.map(t => t.location).filter(Boolean))].sort();
-  row.innerHTML = locations.length
-    ? locations.map(loc =>
-        `<button type="button" class="chip ${loc === searchLocFilter ? 'selected' : ''}" data-loc="${escapeHtml(loc)}">${escapeHtml(loc)}</button>`
-      ).join('')
-    : `<div class="empty-state" style="padding:8px 0;">No locations on any task yet</div>`;
-  row.querySelectorAll('[data-loc]').forEach(chip => chip.addEventListener('click', () => {
-    searchLocFilter = searchLocFilter === chip.dataset.loc ? null : chip.dataset.loc;
-    renderSearchLocRow();
-    updateSearchFilterChipStyles();
-    runSearch();
-  }));
-}
-
 document.getElementById('searchFilterRow').addEventListener('click', (e) => {
   const btn = e.target.closest('.chip');
   if (!btn) return;
   const f = btn.dataset.filter;
   const byRow = document.getElementById('searchByRow');
-  const locRow = document.getElementById('searchLocRow');
 
   if (f === 'open' || f === 'completed') {
     if (searchStatusFilters.has(f)) searchStatusFilters.delete(f); else searchStatusFilters.add(f);
     updateSearchFilterChipStyles();
     runSearch();
+  } else if (f === 'loc' || f === 'time') {
+    // Plain toggle: "has a location marked" / "has a time marked" — location values
+    // are open-ended and could be many, so (unlike creators) we don't pick a specific
+    // one, we just filter for tasks where that field is set at all.
+    if (searchToggleFilters.has(f)) searchToggleFilters.delete(f); else searchToggleFilters.add(f);
+    updateSearchFilterChipStyles();
+    runSearch();
   } else if (f === 'by') {
-    locRow.classList.add('hidden');
     const opening = byRow.classList.contains('hidden');
     byRow.classList.toggle('hidden', !opening);
     if (opening) renderSearchByRow();
-  } else if (f === 'loc') {
-    byRow.classList.add('hidden');
-    const opening = locRow.classList.contains('hidden');
-    locRow.classList.toggle('hidden', !opening);
-    if (opening) renderSearchLocRow();
   }
 });
 
 function runSearch() {
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
   const results = document.getElementById('searchResults');
-  const filtersActive = searchStatusFilters.size > 0 || searchByFilter || searchLocFilter;
+  const filtersActive = searchStatusFilters.size > 0 || searchToggleFilters.size > 0 || searchByFilter;
   if (!q && !filtersActive) { results.innerHTML = `<div class="empty-state">Type to search across all tasks</div>`; return; }
 
   const matches = allTasks.filter(t => {
     if (q && !t.title.toLowerCase().includes(q)) return false;
     if (searchStatusFilters.size && !searchStatusFilters.has(t.status)) return false;
     if (searchByFilter && t.createdBy !== searchByFilter) return false;
-    if (searchLocFilter && t.location !== searchLocFilter) return false;
+    if (searchToggleFilters.has('loc') && !t.location) return false;
+    if (searchToggleFilters.has('time') && !t.dueTime) return false;
     return true;
   });
 
@@ -1214,7 +1199,8 @@ function runSearch() {
       <div class="task-card-main">
         <div class="task-card-no">${t.activityNo} &middot; ${labelFor(t.tab)}</div>
         <div class="task-card-title">${escapeHtml(t.title)}</div>
-        <div class="task-card-due">${formatDate(t.dueDate)}</div>
+        <div class="task-card-due">${formatDate(t.dueDate)}${t.dueTime ? `, ${formatTime(t.dueTime)}` : ''}</div>
+        ${t.location ? `<div class="task-card-loc">&#128205; ${escapeHtml(t.location)}</div>` : ''}
       </div>
     </div>`).join('') : `<div class="empty-state">No matching tasks</div>`;
   results.querySelectorAll('[data-task-id]').forEach(el => el.addEventListener('click', () => openTaskDetail(el.dataset.taskId)));
