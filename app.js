@@ -4,6 +4,8 @@ let currentTab = 'home';
 let previousTabView = 'home';
 let currentTaskId = null;
 let completedCollapsed = { simple: false, medium: false, heavy: false };
+const UPCOMING_GROUPS = ['today', 'tomorrow', 'thisWeek', 'nextWeek', 'thisMonth', 'nextMonth', 'later'];
+let upcomingCollapsed = { today: true, tomorrow: true, thisWeek: true, nextWeek: true, thisMonth: true, nextMonth: true, later: true };
 let creatorNames = ['Name 1', 'Name 2', 'Name 3'];
 let tabLabels = { simple: 'Simple', medium: 'Medium', heavy: 'Heavy' };
 let addTaskSelectedCreator = null;
@@ -38,6 +40,46 @@ function formatTs(ts) {
 
 function isOverdue(task) {
   return task.status === 'open' && task.dueDate && task.dueDate < todayStr();
+}
+
+// Buckets open, non-overdue tasks into Today / Tomorrow / This week / Next week /
+// This month / Next month / Later / No due date. Weeks run Monday-Sunday.
+function groupTasksByDate(tasks) {
+  const groups = { today: [], tomorrow: [], thisWeek: [], nextWeek: [], thisMonth: [], nextMonth: [], later: [] };
+
+  const today = new Date(todayStr() + 'T00:00:00');
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+
+  const dow = today.getDay(); // 0=Sun..6=Sat
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const thisWeekStart = new Date(today); thisWeekStart.setDate(today.getDate() + mondayOffset);
+  const thisWeekEnd = new Date(thisWeekStart); thisWeekEnd.setDate(thisWeekStart.getDate() + 6);
+
+  const nextWeekStart = new Date(thisWeekEnd); nextWeekStart.setDate(thisWeekEnd.getDate() + 1);
+  const nextWeekEnd = new Date(nextWeekStart); nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+
+  const thisMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const nextMonthEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+
+  const toStr = (d) => d.toISOString().slice(0, 10);
+  const todayS = toStr(today), tomorrowS = toStr(tomorrow);
+  const thisWeekEndS = toStr(thisWeekEnd), nextWeekStartS = toStr(nextWeekStart), nextWeekEndS = toStr(nextWeekEnd);
+  const thisMonthEndS = toStr(thisMonthEnd), nextMonthEndS = toStr(nextMonthEnd);
+
+  tasks.forEach(t => {
+    const d = t.dueDate;
+    if (!d) return; // due date is mandatory; nothing to bucket
+    if (d === todayS) groups.today.push(t);
+    else if (d === tomorrowS) groups.tomorrow.push(t);
+    else if (d <= thisWeekEndS) groups.thisWeek.push(t);
+    else if (d >= nextWeekStartS && d <= nextWeekEndS) groups.nextWeek.push(t);
+    else if (d <= thisMonthEndS) groups.thisMonth.push(t);
+    else if (d <= nextMonthEndS) groups.nextMonth.push(t);
+    else groups.later.push(t);
+  });
+
+  Object.keys(groups).forEach(k => groups[k].sort((a, b) => (a.dueDate || '') < (b.dueDate || '') ? -1 : 1));
+  return groups;
 }
 
 function capitalize(s) {
@@ -957,6 +999,43 @@ function renderHome() {
         <div class="d">${formatDate(t.dueDate)}</div>
       </div>`).join('') : `<div class="empty-check">Nothing overdue &#127881;</div>`;
   overdueList.querySelectorAll('[data-task-id]').forEach(el => el.addEventListener('click', () => openTaskDetail(el.dataset.taskId)));
+
+  renderHomeUpcoming(open.filter(t => !isOverdue(t)));
+}
+
+const UPCOMING_GROUP_LABELS = {
+  today: 'Today', tomorrow: 'Tomorrow', thisWeek: 'This week', nextWeek: 'Next week',
+  thisMonth: 'This month', nextMonth: 'Next month', later: 'Later'
+};
+
+function renderHomeUpcoming(openNonOverdueTasks) {
+  const container = document.getElementById('homeUpcomingList');
+  const groups = groupTasksByDate(openNonOverdueTasks);
+  const nonEmpty = UPCOMING_GROUPS.filter(k => groups[k].length);
+
+  if (!nonEmpty.length) {
+    container.innerHTML = `<div class="empty-check">No upcoming tasks &#127881;</div>`;
+    return;
+  }
+
+  container.innerHTML = nonEmpty.map(key => {
+    const tasks = groups[key];
+    const collapsed = upcomingCollapsed[key];
+    const rows = tasks.map(t => `
+      <div class="overdue-row tab-${t.tab}" data-task-id="${t.id}">
+        <div class="t">${escapeHtml(t.title)} <span style="opacity:.5; font-weight:400;">(${t.activityNo})</span></div>
+        <div class="d">${formatDate(t.dueDate)}</div>
+      </div>`).join('');
+    return `
+      <div class="group-header" data-toggle-upcoming="${key}">${UPCOMING_GROUP_LABELS[key]} (${tasks.length}) <span>${collapsed ? '&#9656;' : '&#9662;'}</span></div>
+      ${collapsed ? '' : rows}`;
+  }).join('');
+
+  container.querySelectorAll('[data-toggle-upcoming]').forEach(el => el.addEventListener('click', () => {
+    upcomingCollapsed[el.dataset.toggleUpcoming] = !upcomingCollapsed[el.dataset.toggleUpcoming];
+    renderHome();
+  }));
+  container.querySelectorAll('[data-task-id]').forEach(el => el.addEventListener('click', () => openTaskDetail(el.dataset.taskId)));
 }
 
 // ================= Search =================
@@ -1226,6 +1305,7 @@ document.getElementById('openEditBtn').addEventListener('click', () => {
   document.getElementById('editTimeInput').value = t.dueTime || '';
   document.getElementById('editLocationInput').value = t.location || '';
   document.getElementById('editGroupInput').value = t.tab;
+  document.getElementById('editTaskError').textContent = '';
   editSelectedCreator = t.createdBy || null;
   renderCreatorChips(document.getElementById('editCreatorChips'), editSelectedCreator, selectEditCreator);
   editTaskModal.classList.remove('hidden');
@@ -1237,7 +1317,9 @@ document.getElementById('saveEditTask').addEventListener('click', async () => {
   const dueTime = document.getElementById('editTimeInput').value || null;
   const location = document.getElementById('editLocationInput').value.trim() || null;
   const tab = document.getElementById('editGroupInput').value;
-  if (!title) return;
+  if (!title) { document.getElementById('editTaskError').textContent = 'Enter a title'; return; }
+  if (!dueDate) { document.getElementById('editTaskError').textContent = 'Please add a due date before saving'; return; }
+  document.getElementById('editTaskError').textContent = '';
   await updateTask(currentTaskId, { title, dueDate, dueTime, location, tab, createdBy: editSelectedCreator });
   editTaskModal.classList.add('hidden');
 });
@@ -1296,6 +1378,8 @@ document.getElementById('saveAddTask').addEventListener('click', async () => {
   const dueTime = document.getElementById('addTaskTimeInput').value || null;
   const location = document.getElementById('addTaskLocationInput').value.trim() || null;
   if (!title) { document.getElementById('addTaskError').textContent = 'Enter a title'; return; }
+  if (!dueDate) { document.getElementById('addTaskError').textContent = 'Please add a due date before saving'; return; }
+  document.getElementById('addTaskError').textContent = '';
   await addTask({ tab: addTaskTab, title, dueDate, dueTime, location, createdBy: addTaskSelectedCreator });
   addTaskModal.classList.add('hidden');
 });
