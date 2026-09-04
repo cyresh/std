@@ -605,7 +605,7 @@ function goToView(name) {
   if (name === 'notifications') renderNotificationsView();
   if (name === 'tabNamesEditor') populateSettingsFields();
   if (name === 'aboutDetail') renderAboutDetail();
-  if (name === 'search') document.getElementById('searchInput').focus();
+  if (name === 'search') { document.getElementById('searchInput').focus(); updateSearchFilterChipStyles(); }
 }
 
 function currentTaskFallbackTab() {
@@ -1124,11 +1124,91 @@ function renderHomeUpcoming(openNonOverdueTasks) {
 }
 
 // ================= Search =================
-document.getElementById('searchInput').addEventListener('input', (e) => {
-  const q = e.target.value.trim().toLowerCase();
+let searchStatusFilters = new Set(); // subset of {'open','completed'}; empty = no status filter
+let searchByFilter = null;           // a creator name, or null
+let searchLocFilter = null;          // a location string, or null
+
+function updateSearchFilterChipStyles() {
+  document.querySelectorAll('#searchFilterRow .chip').forEach(btn => {
+    const f = btn.dataset.filter;
+    let active = false;
+    if (f === 'open') active = searchStatusFilters.has('open');
+    else if (f === 'completed') active = searchStatusFilters.has('completed');
+    else if (f === 'by') active = !!searchByFilter;
+    else if (f === 'loc') active = !!searchLocFilter;
+    btn.classList.toggle('selected', active);
+    if (f === 'by') btn.textContent = searchByFilter ? `By: ${searchByFilter}` : 'By';
+    if (f === 'loc') btn.textContent = searchLocFilter ? `Loc: ${searchLocFilter}` : 'Loc';
+  });
+}
+
+function renderSearchByRow() {
+  const row = document.getElementById('searchByRow');
+  row.innerHTML = creatorNames.map(name =>
+    `<button type="button" class="chip ${name === searchByFilter ? 'selected' : ''}" data-by="${escapeHtml(name)}">${escapeHtml(name)}</button>`
+  ).join('');
+  row.querySelectorAll('[data-by]').forEach(chip => chip.addEventListener('click', () => {
+    searchByFilter = searchByFilter === chip.dataset.by ? null : chip.dataset.by;
+    renderSearchByRow();
+    updateSearchFilterChipStyles();
+    runSearch();
+  }));
+}
+
+function renderSearchLocRow() {
+  const row = document.getElementById('searchLocRow');
+  const locations = [...new Set(allTasks.map(t => t.location).filter(Boolean))].sort();
+  row.innerHTML = locations.length
+    ? locations.map(loc =>
+        `<button type="button" class="chip ${loc === searchLocFilter ? 'selected' : ''}" data-loc="${escapeHtml(loc)}">${escapeHtml(loc)}</button>`
+      ).join('')
+    : `<div class="empty-state" style="padding:8px 0;">No locations on any task yet</div>`;
+  row.querySelectorAll('[data-loc]').forEach(chip => chip.addEventListener('click', () => {
+    searchLocFilter = searchLocFilter === chip.dataset.loc ? null : chip.dataset.loc;
+    renderSearchLocRow();
+    updateSearchFilterChipStyles();
+    runSearch();
+  }));
+}
+
+document.getElementById('searchFilterRow').addEventListener('click', (e) => {
+  const btn = e.target.closest('.chip');
+  if (!btn) return;
+  const f = btn.dataset.filter;
+  const byRow = document.getElementById('searchByRow');
+  const locRow = document.getElementById('searchLocRow');
+
+  if (f === 'open' || f === 'completed') {
+    if (searchStatusFilters.has(f)) searchStatusFilters.delete(f); else searchStatusFilters.add(f);
+    updateSearchFilterChipStyles();
+    runSearch();
+  } else if (f === 'by') {
+    locRow.classList.add('hidden');
+    const opening = byRow.classList.contains('hidden');
+    byRow.classList.toggle('hidden', !opening);
+    if (opening) renderSearchByRow();
+  } else if (f === 'loc') {
+    byRow.classList.add('hidden');
+    const opening = locRow.classList.contains('hidden');
+    locRow.classList.toggle('hidden', !opening);
+    if (opening) renderSearchLocRow();
+  }
+});
+
+function runSearch() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
   const results = document.getElementById('searchResults');
-  if (!q) { results.innerHTML = `<div class="empty-state">Type to search across all tasks</div>`; return; }
-  const matches = allTasks.filter(t => t.title.toLowerCase().includes(q));
+  const filtersActive = searchStatusFilters.size > 0 || searchByFilter || searchLocFilter;
+  if (!q && !filtersActive) { results.innerHTML = `<div class="empty-state">Type to search across all tasks</div>`; return; }
+
+  const matches = allTasks.filter(t => {
+    if (q && !t.title.toLowerCase().includes(q)) return false;
+    if (searchStatusFilters.size && !searchStatusFilters.has(t.status)) return false;
+    if (searchByFilter && t.createdBy !== searchByFilter) return false;
+    if (searchLocFilter && t.location !== searchLocFilter) return false;
+    return true;
+  });
+
   results.innerHTML = matches.length ? matches.map(t => `
     <div class="task-card" data-task-id="${t.id}" style="background:var(--surface); border:1px solid var(--border); color:var(--text);">
       <div class="task-card-main">
@@ -1138,7 +1218,9 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
       </div>
     </div>`).join('') : `<div class="empty-state">No matching tasks</div>`;
   results.querySelectorAll('[data-task-id]').forEach(el => el.addEventListener('click', () => openTaskDetail(el.dataset.taskId)));
-});
+}
+
+document.getElementById('searchInput').addEventListener('input', runSearch);
 
 // ================= Tamil Panchangam (Lahiri ayanamsa, computed via astronomy-engine) =================
 const TAMIL_MONTHS = ['Chithirai', 'Vaikasi', 'Aani', 'Aadi', 'Aavani', 'Purattasi', 'Aippasi', 'Karthigai', 'Margazhi', 'Thai', 'Maasi', 'Panguni'];
