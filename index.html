@@ -42,6 +42,14 @@
   #app.tab-medium{ background:var(--medium-wash); }
   #app.tab-heavy{ background:var(--heavy-wash); }
   #app.tab-home,#app.tab-settings,#app.tab-calendar,#app.tab-search,#app.tab-creatorsEditor,#app.tab-notifications,#app.tab-tabNamesEditor,#app.tab-helpDetail,#app.tab-aboutDetail{ background:var(--bg); }
+  /* While swiping, the neighboring tab is dragged into view before #app's own
+     tab-* class switches (that only happens once the swipe finishes). These
+     rules key off each view's own data-tab attribute instead, so a view
+     always carries its correct theme colors even while #app still reflects
+     the tab you're swiping away from. */
+  .view[data-tab="simple"]{ background:var(--simple-wash); }
+  .view[data-tab="medium"]{ background:var(--medium-wash); }
+  .view[data-tab="heavy"]{ background:var(--heavy-wash); }
 
   #topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; gap:10px; }
   #topbar .title{ font-size:1.38em; font-weight:700; letter-spacing:.2px; flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -121,6 +129,9 @@
   #app.tab-simple .btn:not(.secondary):not(.danger){ background:var(--simple-accent); }
   #app.tab-medium .btn:not(.secondary):not(.danger){ background:var(--medium-accent); }
   #app.tab-heavy .btn:not(.secondary):not(.danger){ background:var(--heavy-accent); }
+  .view[data-tab="simple"] .btn:not(.secondary):not(.danger){ background:var(--simple-accent); }
+  .view[data-tab="medium"] .btn:not(.secondary):not(.danger){ background:var(--medium-accent); }
+  .view[data-tab="heavy"] .btn:not(.secondary):not(.danger){ background:var(--heavy-accent); }
 
   .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:50; display:flex; align-items:flex-end; justify-content:center; }
   .modal-backdrop.hidden{ display:none; }
@@ -149,6 +160,9 @@
   #app.tab-simple .task-card{ background:var(--simple-card); color:var(--simple-text); }
   #app.tab-medium .task-card{ background:var(--medium-card); color:var(--medium-text); }
   #app.tab-heavy .task-card{ background:var(--heavy-card); color:var(--heavy-text); }
+  .view[data-tab="simple"] .task-card{ background:var(--simple-card); color:var(--simple-text); }
+  .view[data-tab="medium"] .task-card{ background:var(--medium-card); color:var(--medium-text); }
+  .view[data-tab="heavy"] .task-card{ background:var(--heavy-card); color:var(--heavy-text); }
   .task-card.completed{ opacity:.6; }
   .task-card-main{ flex:1; min-width:0; }
   .task-card-no{ font-size:.72em; font-weight:700; opacity:.65; letter-spacing:.4px; }
