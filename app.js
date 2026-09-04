@@ -666,6 +666,7 @@ function resetViewInlineStyles(el) {
   let startX = 0, startY = 0, dx = 0, widthPx = 0;
   let curEl = null, prevEl = null, nextEl = null, prevName = null, nextName = null;
   let primed = false;
+  let usingMouse = false;
 
   function cleanup() {
     resetViewInlineStyles(curEl);
@@ -678,23 +679,23 @@ function resetViewInlineStyles(el) {
     primed = false;
   }
 
-  viewsEl.addEventListener('touchstart', (e) => {
+  function handleStart(x, y) {
     if (!MAIN_TABS_ORDER.includes(currentTab)) { dragging = false; return; }
     dragging = true;
     isHorizontal = null;
     primed = false;
     dx = 0;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
+    startX = x;
+    startY = y;
     widthPx = viewsEl.clientWidth;
 
     // Render the neighboring tabs' real content now, off the critical path,
     // instead of waiting until the drag is confirmed horizontal. Rendering
-    // a full task list mid-touchmove could block the frame long enough that
+    // a full task list mid-move could block the frame long enough that
     // the screen looked "stuck" on the current tab while dragging, with the
     // real neighbor only popping in once the swipe finished. Priming here
-    // (via rAF, so it never blocks touchstart itself) means the content is
-    // already painted and ready by the time any drag distance registers.
+    // (via rAF, so it never blocks the start event itself) means the content
+    // is already painted and ready by the time any drag distance registers.
     const idx = MAIN_TABS_ORDER.indexOf(currentTab);
     prevName = idx > 0 ? MAIN_TABS_ORDER[idx - 1] : null;
     nextName = idx < MAIN_TABS_ORDER.length - 1 ? MAIN_TABS_ORDER[idx + 1] : null;
@@ -703,17 +704,15 @@ function resetViewInlineStyles(el) {
     nextEl = nextName ? document.getElementById('view-' + nextName) : null;
 
     requestAnimationFrame(() => {
-      if (!dragging) return; // gesture already ended (e.g. a quick tap)
+      if (!dragging) return; // gesture already ended (e.g. a quick tap/click)
       if (prevEl) renderMainTabContent(prevName);
       if (nextEl) renderMainTabContent(nextName);
       primed = true;
     });
-  }, { passive: true });
+  }
 
-  viewsEl.addEventListener('touchmove', (e) => {
+  function handleMove(x, y, preventDefault) {
     if (!dragging) return;
-    const x = e.touches[0].clientX;
-    const y = e.touches[0].clientY;
     const rawDx = x - startX;
     const rawDy = y - startY;
 
@@ -739,7 +738,7 @@ function resetViewInlineStyles(el) {
     }
 
     if (!isHorizontal) return;
-    e.preventDefault();
+    if (preventDefault) preventDefault();
     let clamped = rawDx;
     if ((rawDx > 0 && !prevName) || (rawDx < 0 && !nextName)) clamped = rawDx * 0.25;
     dx = clamped;
@@ -747,9 +746,9 @@ function resetViewInlineStyles(el) {
     curEl.style.transform = `translateX(${clamped}px)`;
     if (rawDx > 0 && prevEl) prevEl.style.transform = `translateX(calc(-100% + ${clamped}px))`;
     if (rawDx < 0 && nextEl) nextEl.style.transform = `translateX(calc(100% + ${clamped}px))`;
-  }, { passive: false });
+  }
 
-  viewsEl.addEventListener('touchend', () => {
+  function handleEnd() {
     if (!dragging) return;
     dragging = false;
     if (!isHorizontal) { isHorizontal = null; cleanup(); return; }
@@ -777,13 +776,54 @@ function resetViewInlineStyles(el) {
       if (nextEl) { nextEl.style.transition = `transform ${dur}ms ease-out`; nextEl.style.transform = 'translateX(100%)'; }
       setTimeout(cleanup, dur + 30);
     }
-  });
+  }
 
-  viewsEl.addEventListener('touchcancel', () => {
+  function handleCancel() {
     if (!dragging) return;
     dragging = false;
     isHorizontal = null;
     cleanup();
+  }
+
+  // ---- Touch (mobile) ----
+  viewsEl.addEventListener('touchstart', (e) => {
+    if (usingMouse) return;
+    handleStart(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+
+  viewsEl.addEventListener('touchmove', (e) => {
+    if (usingMouse) return;
+    handleMove(e.touches[0].clientX, e.touches[0].clientY, () => e.preventDefault());
+  }, { passive: false });
+
+  viewsEl.addEventListener('touchend', () => { if (!usingMouse) handleEnd(); });
+  viewsEl.addEventListener('touchcancel', () => { if (!usingMouse) handleCancel(); });
+
+  // ---- Mouse (desktop click-and-drag) ----
+  // Mirrors the touch behavior above so dragging with a mouse on desktop
+  // gets the same real-time, drag-following swipe animation between tabs.
+  viewsEl.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return; // left click only
+    if (e.target.closest('input, textarea, select, button, a, .tick-btn')) return; // don't hijack normal controls
+    usingMouse = true;
+    handleStart(e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!usingMouse) return;
+    handleMove(e.clientX, e.clientY, () => e.preventDefault());
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!usingMouse) return;
+    handleEnd();
+    usingMouse = false;
+  });
+
+  window.addEventListener('mouseleave', () => {
+    if (!usingMouse) return;
+    handleCancel();
+    usingMouse = false;
   });
 })();
 
