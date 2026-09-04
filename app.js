@@ -722,6 +722,11 @@ function renderCreatorChips(container, selected, onSelect) {
 // ================= Settings =================
 const CHANGELOG = [
   {
+    version: '1.4.0', date: 'Sept 2026', notes: [
+      'Tamil calendar added to the Calendar view — Tamil month/date shown per day, full panchangam (year name, nakshatram, thithi) on tap, computed astronomically'
+    ]
+  },
+  {
     version: '1.3.0', date: 'Sept 2026', notes: [
       'Bold bottom-nav labels; home summary numbers color-coded (blue/green/red)',
       'Home progress bars reordered (completed bar on top)',
@@ -971,6 +976,89 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
   results.querySelectorAll('[data-task-id]').forEach(el => el.addEventListener('click', () => openTaskDetail(el.dataset.taskId)));
 });
 
+// ================= Tamil Panchangam (Lahiri ayanamsa, computed via astronomy-engine) =================
+const TAMIL_MONTHS = ['Chithirai', 'Vaikasi', 'Aani', 'Aadi', 'Aavani', 'Purattasi', 'Aippasi', 'Karthigai', 'Margazhi', 'Thai', 'Maasi', 'Panguni'];
+const TAMIL_MONTHS_SHORT = ['Chith', 'Vaik', 'Aani', 'Aadi', 'Aav', 'Pura', 'Aipp', 'Kar', 'Marg', 'Thai', 'Maasi', 'Pang'];
+const TAMIL_YEAR_NAMES = ['Prabhava', 'Vibhava', 'Sukla', 'Pramodhoodha', 'Prachorpaththi', 'Aangirasa', 'Srimukha', 'Bhava', 'Yuva', 'Thaadhu', 'Eesvara', 'Vehudhanya', 'Pramathi', 'Vikrama', 'Vishu', 'Chitrabaanu', 'Subaanu', 'Thaarana', 'Paarthiba', 'Viya', 'Sarvajith', 'Sarvadhari', 'Virodhi', 'Vikruthi', 'Kara', 'Nandhana', 'Vijaya', 'Jaya', 'Manmatha', 'Dhunmuki', 'Hevilambi', 'Vilambi', 'Vikari', 'Sarvari', 'Plava', 'Subakrith', 'Sobakrith', 'Krodhi', 'Visuvaasuva', 'Parabhaava', 'Plavanga', 'Keelaka', 'Saumya', 'Sadharana', 'Virodhikrithu', 'Paridhaabi', 'Pramaadhisa', 'Aanandha', 'Rakshasa', 'Nala', 'Pingala', 'Kalayukthi', 'Siddharthi', 'Raudhri', 'Thunmathi', 'Dhundubhi', 'Rudhrodhgaari', 'Raktakshi', 'Krodhana', 'Akshaya'];
+const TAMIL_NAKSHATRAS = ['Ashwini', 'Bharani', 'Karthigai', 'Rohini', 'Mirugasirisham', 'Thiruvathirai', 'Punarpoosam', 'Poosam', 'Ayilyam', 'Magam', 'Pooram', 'Uthiram', 'Hastham', 'Chithirai', 'Swathi', 'Visakam', 'Anusham', 'Kettai', 'Moolam', 'Pooradam', 'Uthiradam', 'Thiruvonam', 'Avittam', 'Sadhayam', 'Poorattathi', 'Uthirattathi', 'Revathi'];
+const TITHI_NAMES_BASE = ['Prathamai', 'Dwithiyai', 'Thrithiyai', 'Chathurthi', 'Panchami', 'Sashti', 'Sapthami', 'Ashtami', 'Navami', 'Dasami', 'Ekadasi', 'Dwadasi', 'Thrayodasi', 'Chathurdasi'];
+
+function lahiriAyanamsa(date) {
+  const year = date.getUTCFullYear() + (date.getUTCMonth() + 1) / 12;
+  return 23.8531 + 0.013955 * (year - 2000);
+}
+function sunSiderealLongitude(date) {
+  const tropical = Astronomy.SunPosition(date).elon;
+  return ((tropical - lahiriAyanamsa(date)) % 360 + 360) % 360;
+}
+function moonSiderealLongitude(date) {
+  const tropical = Astronomy.EclipticGeoMoon(date).lon;
+  return ((tropical - lahiriAyanamsa(date)) % 360 + 360) % 360;
+}
+function tamilMonthIndexFor(sidLong) { return Math.floor(sidLong / 30) % 12; }
+
+function tamilYearName(gregorianDate) {
+  const y = gregorianDate.getUTCFullYear();
+  const puthandu = new Date(Date.UTC(y, 3, 14));
+  const startYear = gregorianDate >= puthandu ? y : y - 1;
+  const idx = (((startYear - 1987) % 60) + 60) % 60;
+  return TAMIL_YEAR_NAMES[idx];
+}
+
+function tithiInfo(date) {
+  const diff = ((moonSiderealLongitude(date) - sunSiderealLongitude(date)) % 360 + 360) % 360;
+  const idx = Math.floor(diff / 12);
+  const paksha = idx < 15 ? 'Shukla' : 'Krishna';
+  const local = idx % 15;
+  const name = local === 14 ? (paksha === 'Shukla' ? 'Pournami' : 'Amavasai') : TITHI_NAMES_BASE[local];
+  return { name, paksha, isSpecial: local === 14 };
+}
+function nakshatraName(date) {
+  const idx = Math.floor(moonSiderealLongitude(date) / (360 / 27)) % 27;
+  return TAMIL_NAKSHATRAS[idx];
+}
+
+const tamilInfoCache = new Map();
+function ymdKey(d) { return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`; }
+
+// Computes Tamil month+day incrementally across a chronological, gap-free list of dates.
+// Only the first date (if uncached) needs an expensive backward walk; the rest are O(1).
+function computeTamilInfoForRange(datesInOrder) {
+  let prevMonthIdx = null, runningDay = 1;
+  datesInOrder.forEach((d) => {
+    const key = ymdKey(d);
+    if (tamilInfoCache.has(key)) {
+      const cached = tamilInfoCache.get(key);
+      prevMonthIdx = cached.monthIdx;
+      runningDay = cached.day;
+      return;
+    }
+    const monthIdx = tamilMonthIndexFor(sunSiderealLongitude(d));
+    if (prevMonthIdx === null) {
+      let day = 1, cursor = new Date(d);
+      for (let i = 0; i < 35; i++) {
+        const prevDay = new Date(cursor);
+        prevDay.setUTCDate(prevDay.getUTCDate() - 1);
+        if (tamilMonthIndexFor(sunSiderealLongitude(prevDay)) !== monthIdx) break;
+        day++;
+        cursor = prevDay;
+      }
+      runningDay = day;
+    } else if (monthIdx !== prevMonthIdx) {
+      runningDay = 1;
+    } else {
+      runningDay++;
+    }
+    prevMonthIdx = monthIdx;
+    tamilInfoCache.set(key, { monthIdx, day: runningDay, year: tamilYearName(d) });
+  });
+}
+function getOrComputeTamilInfo(d) {
+  const key = ymdKey(d);
+  if (!tamilInfoCache.has(key)) computeTamilInfoForRange([d]);
+  return tamilInfoCache.get(key);
+}
+
 // ================= Calendar =================
 function renderCalendar() {
   document.getElementById('calMonthLabel').textContent = new Date(calYear, calMonth, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
@@ -979,6 +1067,10 @@ function renderCalendar() {
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
   const todayS = todayStr();
 
+  const monthDates = [];
+  for (let d = 1; d <= daysInMonth; d++) monthDates.push(new Date(Date.UTC(calYear, calMonth, d, 12, 0, 0)));
+  computeTamilInfoForRange(monthDates);
+
   let html = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div class="cal-dow">${d}</div>`).join('');
   for (let i = 0; i < firstDow; i++) html += `<div class="cal-day empty"></div>`;
   for (let d = 1; d <= daysInMonth; d++) {
@@ -986,7 +1078,9 @@ function renderCalendar() {
     const dayTasks = allTasks.filter(t => t.dueDate === dateStr);
     const tabsPresent = [...new Set(dayTasks.map(t => t.tab))];
     const dots = tabsPresent.map(tab => `<span class="dot ${tab}"></span>`).join('');
-    html += `<div class="cal-day ${dateStr === todayS ? 'today' : ''}" data-date="${dateStr}"><div>${d}</div><div class="dots">${dots}</div></div>`;
+    const tInfo = getOrComputeTamilInfo(monthDates[d - 1]);
+    const tamilMini = tInfo ? `<div class="tamil-mini">${TAMIL_MONTHS_SHORT[tInfo.monthIdx]} ${tInfo.day}</div>` : '';
+    html += `<div class="cal-day ${dateStr === todayS ? 'today' : ''}" data-date="${dateStr}"><div>${d}</div>${tamilMini}<div class="dots">${dots}</div></div>`;
   }
   grid.innerHTML = html;
   grid.querySelectorAll('.cal-day[data-date]').forEach(cell => {
@@ -997,13 +1091,25 @@ function renderCalendar() {
 function openDayTasksModal(dateStr, tasks) {
   document.getElementById('dayTasksTitle').textContent = formatDate(dateStr);
   const list = document.getElementById('dayTasksList');
-  list.innerHTML = tasks.length ? tasks.map(t => `
+
+  const d = new Date(dateStr + 'T12:00:00Z');
+  const tInfo = getOrComputeTamilInfo(d);
+  const tithi = tithiInfo(d);
+  const nak = nakshatraName(d);
+  const panchangHtml = tInfo ? `
+    <div style="background:var(--surface-2); border-radius:12px; padding:12px 14px; margin-bottom:14px; font-size:.85em; line-height:1.6;">
+      <strong>${TAMIL_MONTHS[tInfo.monthIdx]} ${tInfo.day}</strong>, ${tInfo.year} varsham<br>
+      Nakshatram: ${nak}<br>
+      Thithi: ${tithi.name}${tithi.isSpecial ? '' : ' (' + tithi.paksha + ' paksham)'}
+    </div>` : '';
+
+  list.innerHTML = panchangHtml + (tasks.length ? tasks.map(t => `
     <div class="task-card" data-task-id="${t.id}" style="background:var(--surface-2); color:var(--text);">
       <div class="task-card-main">
         <div class="task-card-no">${t.activityNo} &middot; ${labelFor(t.tab)}</div>
         <div class="task-card-title">${escapeHtml(t.title)}</div>
       </div>
-    </div>`).join('') : `<div class="empty-state">No tasks due this day</div>`;
+    </div>`).join('') : `<div class="empty-state">No tasks due this day</div>`);
   list.querySelectorAll('[data-task-id]').forEach(el => {
     el.addEventListener('click', () => { document.getElementById('dayTasksModal').classList.add('hidden'); openTaskDetail(el.dataset.taskId); });
   });

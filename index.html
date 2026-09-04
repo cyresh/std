@@ -236,7 +236,8 @@
   .cal-nav-btn{ width:36px; height:36px; border-radius:10px; border:none; background:var(--surface-2); color:var(--text); font-size:1.1em; cursor:pointer; }
   .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
   .cal-dow{ text-align:center; font-size:.7em; color:var(--text-dim); font-weight:700; padding-bottom:4px; }
-  .cal-day{ aspect-ratio:1; border-radius:10px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer; font-size:.85em; position:relative; }
+  .cal-day{ aspect-ratio:1; border-radius:10px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; font-size:.85em; position:relative; padding:2px; }
+  .cal-day .tamil-mini{ font-size:.48em; color:var(--text-dim); line-height:1; text-align:center; }
   .cal-day.empty{ visibility:hidden; cursor:default; border:none; }
   .cal-day.today{ border:2px solid var(--accent); }
   .cal-day .dots{ display:flex; gap:3px; height:6px; }
@@ -525,7 +526,8 @@
           <strong>Search</strong>, <strong>Calendar</strong> and <strong>Settings</strong> icons are top right, plus a bell for reminders. Swipe left/right on Home/group screens to switch between them.<br><br>
           <strong>Reminders</strong> &mdash; the bell shows what's due today and overdue. Turn on notifications in Settings to also get an OS-level alert while the app is open. Alerts that arrive even when the app is closed need a bigger backend upgrade, planned for later.<br><br>
           <strong>PIN</strong> &mdash; one shared 6-digit PIN for all devices, asked once per day per device. 3 wrong attempts locks entry for 5 minutes, doubling with each further miss.<br><br>
-          <strong>Sync dot</strong> (top right) &mdash; tap it any time to see your last sync status.
+          <strong>Sync dot</strong> (top right) &mdash; tap it any time to see your last sync status.<br><br>
+          <strong>Tamil calendar</strong> &mdash; each day in Calendar shows its Tamil month/date beneath the Gregorian date. Tap a day for full panchangam detail (year name, nakshatram, thithi). Computed astronomically (Lahiri ayanamsa) rather than pulled from a published panchangam, so it may occasionally differ by a day from your local almanac right at a month or thithi boundary.
         </div>
       </div>
     </div>
@@ -721,6 +723,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="astronomy.min.js"></script>
 <script src="db.js"></script>
 <script src="app.js"></script>
 </body>
