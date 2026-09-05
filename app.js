@@ -1302,6 +1302,7 @@ function renderCalendar() {
   const monthDates = [];
   for (let d = 1; d <= daysInMonth; d++) monthDates.push(new Date(Date.UTC(calYear, calMonth, d, 12, 0, 0)));
   computeTamilInfoForRange(monthDates);
+  renderCalendarImportantDays(monthDates);
 
   let html = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div class="cal-dow">${d}</div>`).join('');
   for (let i = 0; i < firstDow; i++) html += `<div class="cal-day empty"></div>`;
@@ -1320,7 +1321,36 @@ function renderCalendar() {
   });
 }
 
+// Scans every day in the visible month for the tithi/nakshatra markers that
+// define these observances, and lists whichever days matched. Full moon and
+// no moon happen once each per month; Kiruthigai (Karthigai nakshatram) and
+// Pradosam (Thrayodasi tithi, both pakshams) can occur once or twice.
+function renderCalendarImportantDays(monthDates) {
+  const groups = { 'Full moon': [], 'No moon': [], 'Kiruthigai': [], 'Pradosam': [] };
+  monthDates.forEach(d => {
+    const tithi = tithiInfo(d);
+    const nak = nakshatraName(d);
+    if (tithi.name === 'Pournami') groups['Full moon'].push(d);
+    if (tithi.name === 'Amavasai') groups['No moon'].push(d);
+    if (tithi.name === 'Thrayodasi') groups['Pradosam'].push(d);
+    if (nak === 'Karthigai') groups['Kiruthigai'].push(d);
+  });
+
+  const card = document.getElementById('calImportantDaysCard');
+  const list = document.getElementById('calImportantDaysList');
+  const rows = Object.entries(groups).filter(([, dates]) => dates.length);
+
+  if (!rows.length) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  list.innerHTML = rows.map(([label, dates]) => `
+    <div class="important-day-row">
+      <div class="t">${label}</div>
+      <div class="d">${dates.map(d => d.getUTCDate()).join(', ')}</div>
+    </div>`).join('');
+}
+
 function openDayTasksModal(dateStr, tasks) {
+  document.getElementById('calImportantDaysCard').classList.add('hidden');
   document.getElementById('dayTasksTitle').textContent = formatDate(dateStr);
   const list = document.getElementById('dayTasksList');
 
@@ -1350,7 +1380,10 @@ function openDayTasksModal(dateStr, tasks) {
 
 document.getElementById('calPrevBtn').addEventListener('click', () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); });
 document.getElementById('calNextBtn').addEventListener('click', () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); });
-document.getElementById('closeDayTasks').addEventListener('click', () => document.getElementById('dayTasksModal').classList.add('hidden'));
+document.getElementById('closeDayTasks').addEventListener('click', () => {
+  document.getElementById('dayTasksModal').classList.add('hidden');
+  document.getElementById('calImportantDaysCard').classList.remove('hidden');
+});
 
 // ================= Task detail =================
 function openTaskDetail(id) {

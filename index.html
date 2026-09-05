@@ -225,6 +225,10 @@
   .progress-fill.total-bar{ opacity:.35; }
 
   .overdue-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0 10px 10px; border-bottom:1px solid var(--border); border-left:4px solid transparent; cursor:pointer; }
+  .important-day-row{ display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border); font-size:.9em; }
+  .important-day-row:last-child{ border-bottom:none; }
+  .important-day-row .t{ font-weight:600; }
+  .important-day-row .d{ color:var(--text-dim); }
   .overdue-row.tab-simple{ border-left-color:var(--simple-accent); }
   .overdue-row.tab-medium{ border-left-color:var(--medium-accent); }
   .overdue-row.tab-heavy{ border-left-color:var(--heavy-accent); }
@@ -410,6 +414,10 @@
         <button class="cal-nav-btn" id="calNextBtn">&#8250;</button>
       </div>
       <div class="cal-grid" id="calGrid"></div>
+      <div class="card" id="calImportantDaysCard">
+        <h3>Important days this month</h3>
+        <div id="calImportantDaysList"></div>
+      </div>
     </div>
 
     <!-- ============ TASK DETAIL ============ -->
