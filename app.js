@@ -577,7 +577,7 @@ function labelFor(name) {
   return FIXED_LABELS[name] || 'Std';
 }
 
-function goToView(name) {
+function goToView(name, opts = {}) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.navbtn').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
@@ -606,7 +606,89 @@ function goToView(name) {
   if (name === 'tabNamesEditor') populateSettingsFields();
   if (name === 'aboutDetail') renderAboutDetail();
   if (name === 'search') { document.getElementById('searchInput').focus(); updateSearchFilterChipStyles(); }
+
+  if (!opts.fromHistory) pushNavHistory(name);
 }
+
+// ---- Back navigation (phone back button / gesture, PC Esc key) ----
+// A real in-app history stack, backed by the browser's History API so the
+// phone's hardware/gesture back button (which the browser turns into a
+// 'popstate' event) steps back through app screens instead of exiting the
+// app. Top-level tabs (Home/Simple/Medium/Heavy) collapse into a single
+// level -- switching between them doesn't pile up separate back-steps --
+// while entering any other ("nested") screen pushes a real step, so back
+// from there returns to whatever you actually came from.
+let navHistory = ['home'];
+const TOP_LEVEL_TABS = ['home', 'simple', 'medium', 'heavy'];
+const ALL_MODAL_IDS = ['changePinModal', 'addTaskModal', 'editTaskModal', 'dayTasksModal'];
+
+function pushNavHistory(name) {
+  const top = navHistory[navHistory.length - 1];
+  if (top === name) return;
+  if (TOP_LEVEL_TABS.includes(name)) {
+    // Home is always the permanent floor of the stack. Switching tabs resets
+    // to a clean [home] or [home, tab], discarding any nested screens above
+    // -- so back from any non-home tab always lands on Home, and back from
+    // Home itself does nothing, matching the two top-level rules exactly.
+    navHistory = name === 'home' ? ['home'] : ['home', name];
+  } else {
+    navHistory.push(name);
+  }
+  history.pushState({ navDepth: navHistory.length }, '', location.pathname + location.search);
+}
+
+function getOpenModalEl() {
+  for (const id of ALL_MODAL_IDS) {
+    const el = document.getElementById(id);
+    if (el && !el.classList.contains('hidden')) return el;
+  }
+  return null;
+}
+
+function closeOpenModal(el) {
+  el.classList.add('hidden');
+  if (el.id === 'dayTasksModal') {
+    const card = document.getElementById('calImportantDaysCard');
+    if (card) card.classList.remove('hidden');
+  }
+}
+
+// Establish a baseline history entry, then push one extra "floor" entry
+// beneath it. A freshly launched standalone PWA otherwise starts with a
+// single history entry and nothing behind it to pop into -- the very first
+// back-press at Home would exit the app immediately rather than trigger our
+// popstate handler at all. The floor entry gives that first press something
+// real to consume, so our handler runs and can neutralize it as intended.
+history.replaceState({ navDepth: 1 }, '', location.href);
+history.pushState({ navDepth: 1 }, '', location.href);
+
+window.addEventListener('popstate', () => {
+  const openModal = getOpenModalEl();
+  if (openModal) {
+    closeOpenModal(openModal);
+    // The browser already consumed one real back-step for this press; push a
+    // fresh one to compensate, so it closed the dialog instead of the screen.
+    history.pushState({ navDepth: navHistory.length }, '', location.pathname + location.search);
+    return;
+  }
+  if (navHistory.length > 1) {
+    navHistory.pop();
+    goToView(navHistory[navHistory.length - 1], { fromHistory: true });
+  } else {
+    // Already at the base screen (Home) -- do nothing, and re-push so this
+    // press doesn't drop through to closing/exiting the app.
+    history.pushState({ navDepth: navHistory.length }, '', location.pathname + location.search);
+  }
+});
+
+// Esc on desktop performs the exact same action by delegating to the real
+// browser back navigation above, so the two triggers can never drift apart.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    history.back();
+  }
+});
 
 function currentTaskFallbackTab() {
   const t = allTasks.find(t => t.id === currentTaskId);
@@ -627,7 +709,7 @@ function navigateWithSlide(name) {
 }
 
 document.querySelectorAll('.navbtn').forEach(btn => btn.addEventListener('click', () => navigateWithSlide(btn.dataset.nav)));
-backBtn.addEventListener('click', () => goToView(previousTabView));
+backBtn.addEventListener('click', () => history.back());
 document.querySelectorAll('[data-goto-tab]').forEach(el => el.addEventListener('click', () => navigateWithSlide(el.dataset.gotoTab)));
 
 document.getElementById('calendarBtn').addEventListener('click', () => {
@@ -682,6 +764,7 @@ function tabWashColor(name) {
     resetViewInlineStyles(curEl);
     resetViewInlineStyles(prevEl);
     resetViewInlineStyles(nextEl);
+    viewsEl.style.background = '';
     if (prevEl) prevEl.classList.remove('active');
     if (nextEl) nextEl.classList.remove('active');
     curEl = prevEl = nextEl = null;
@@ -750,6 +833,14 @@ function tabWashColor(name) {
 
     if (!isHorizontal) return;
     if (preventDefault) preventDefault();
+    // #views itself owns the 16px/110px padding gutter around the content. A
+    // child's own background (even sized to 100%) can be inconsistent about
+    // covering that gutter depending on containing-block edge cases, so we
+    // additionally paint the gutter directly on #views -- its own background
+    // is guaranteed by CSS to extend under its own padding. Lead with
+    // whichever tab is currently being dragged toward, tracked live so a
+    // mid-drag direction reversal updates it too.
+    viewsEl.style.background = tabWashColor(rawDx > 0 ? (prevName || currentTab) : (nextName || currentTab));
     let clamped = rawDx;
     if ((rawDx > 0 && !prevName) || (rawDx < 0 && !nextName)) clamped = rawDx * 0.25;
     dx = clamped;
@@ -1194,7 +1285,11 @@ function runSearch() {
     return true;
   });
 
-  results.innerHTML = matches.length ? matches.map(t => `
+  results.innerHTML = matches.length ? matches.map(t => {
+    const statusHtml = t.status === 'completed' ? '<span class="status-badge completed">Completed</span>'
+      : isOverdue(t) ? '<span class="status-badge overdue">Overdue</span>'
+      : '<span class="status-badge open">Open</span>';
+    return `
     <div class="task-card" data-task-id="${t.id}" style="background:var(--surface); border:1px solid var(--border); color:var(--text);">
       <div class="task-card-main">
         <div class="task-card-no">${t.activityNo} &middot; ${labelFor(t.tab)}</div>
@@ -1202,7 +1297,9 @@ function runSearch() {
         <div class="task-card-due">${formatDate(t.dueDate)}${t.dueTime ? `, ${formatTime(t.dueTime)}` : ''}</div>
         ${t.location ? `<div class="task-card-loc">&#128205; ${escapeHtml(t.location)}</div>` : ''}
       </div>
-    </div>`).join('') : `<div class="empty-state">No matching tasks</div>`;
+      ${statusHtml}
+    </div>`;
+  }).join('') : `<div class="empty-state">No matching tasks</div>`;
   results.querySelectorAll('[data-task-id]').forEach(el => el.addEventListener('click', () => openTaskDetail(el.dataset.taskId)));
 }
 
@@ -1498,6 +1595,8 @@ document.getElementById('openEditBtn').addEventListener('click', () => {
 });
 document.getElementById('cancelEditTask').addEventListener('click', () => editTaskModal.classList.add('hidden'));
 document.getElementById('saveEditTask').addEventListener('click', async () => {
+  const btn = document.getElementById('saveEditTask');
+  if (btn.disabled) return;
   const title = document.getElementById('editTitleInput').value.trim();
   const dueDate = document.getElementById('editDueInput').value || null;
   const dueTime = document.getElementById('editTimeInput').value || null;
@@ -1506,8 +1605,18 @@ document.getElementById('saveEditTask').addEventListener('click', async () => {
   if (!title) { document.getElementById('editTaskError').textContent = 'Enter a title'; return; }
   if (!dueDate) { document.getElementById('editTaskError').textContent = 'Please add a due date before saving'; return; }
   document.getElementById('editTaskError').textContent = '';
-  await updateTask(currentTaskId, { title, dueDate, dueTime, location, tab, createdBy: editSelectedCreator });
-  editTaskModal.classList.add('hidden');
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Saving...';
+  try {
+    await updateTask(currentTaskId, { title, dueDate, dueTime, location, tab, createdBy: editSelectedCreator });
+    editTaskModal.classList.add('hidden');
+  } catch (err) {
+    document.getElementById('editTaskError').textContent = 'Could not save. Please try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 });
 document.getElementById('deleteTaskBtn').addEventListener('click', async () => {
   if (!confirm('Delete this task? This cannot be undone.')) return;
@@ -1559,6 +1668,8 @@ document.getElementById('quickAddBtn').addEventListener('click', () => {
 });
 document.getElementById('cancelAddTask').addEventListener('click', () => addTaskModal.classList.add('hidden'));
 document.getElementById('saveAddTask').addEventListener('click', async () => {
+  const btn = document.getElementById('saveAddTask');
+  if (btn.disabled) return; // guard against rapid double-taps while a save is in flight
   const title = document.getElementById('addTaskTitleInput').value.trim();
   const dueDate = document.getElementById('addTaskDueInput').value || null;
   const dueTime = document.getElementById('addTaskTimeInput').value || null;
@@ -1566,8 +1677,18 @@ document.getElementById('saveAddTask').addEventListener('click', async () => {
   if (!title) { document.getElementById('addTaskError').textContent = 'Enter a title'; return; }
   if (!dueDate) { document.getElementById('addTaskError').textContent = 'Please add a due date before saving'; return; }
   document.getElementById('addTaskError').textContent = '';
-  await addTask({ tab: addTaskTab, title, dueDate, dueTime, location, createdBy: addTaskSelectedCreator });
-  addTaskModal.classList.add('hidden');
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Saving...';
+  try {
+    await addTask({ tab: addTaskTab, title, dueDate, dueTime, location, createdBy: addTaskSelectedCreator });
+    addTaskModal.classList.add('hidden');
+  } catch (err) {
+    document.getElementById('addTaskError').textContent = 'Could not save. Please try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 });
 
 // ================= Auth + Firestore live sync =================

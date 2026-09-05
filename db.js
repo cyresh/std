@@ -7,24 +7,33 @@
 //   meta/appSettings{ createdByNames:[...], tabLabels:{simple,medium,heavy} }
 
 const TASKS_COL = firestoreDb.collection('tasks');
-const COUNTERS_DOC = firestoreDb.collection('meta').doc('counters');
 const SECURITY_DOC = firestoreDb.collection('meta').doc('security');
 const APP_SETTINGS_DOC = firestoreDb.collection('meta').doc('appSettings');
 
 const TAB_PREFIX = { simple: 'S', medium: 'M', heavy: 'H' };
 
-async function nextActivityNo(tab) {
-  return firestoreDb.runTransaction(async (tx) => {
-    const snap = await tx.get(COUNTERS_DOC);
-    const data = snap.exists ? snap.data() : { simple: 0, medium: 0, heavy: 0 };
-    const next = (data[tab] || 0) + 1;
-    tx.set(COUNTERS_DOC, { ...data, [tab]: next }, { merge: true });
-    return `${TAB_PREFIX[tab]}-${String(next).padStart(3, '0')}`;
+// Picks the next activity number for a tab from the locally cached task list
+// (kept live by listenToTasks/allTasks in app.js) instead of a Firestore
+// transaction. Transactions require a live round-trip to the server and will
+// hang indefinitely while offline -- that's what caused "Save" to appear
+// stuck with no feedback, and repeated taps queuing up multiple transactions
+// that all fired at once (as duplicate tasks) the moment connectivity
+// returned. A plain document write, unlike a transaction, is fully supported
+// by Firestore's offline persistence and resolves immediately either way.
+function nextActivityNo(tab) {
+  const prefix = TAB_PREFIX[tab];
+  let maxNum = 0;
+  (typeof allTasks !== 'undefined' ? allTasks : []).forEach((t) => {
+    if (t.tab === tab && typeof t.activityNo === 'string' && t.activityNo.startsWith(prefix + '-')) {
+      const n = parseInt(t.activityNo.slice(prefix.length + 1), 10);
+      if (!isNaN(n) && n > maxNum) maxNum = n;
+    }
   });
+  return `${prefix}-${String(maxNum + 1).padStart(3, '0')}`;
 }
 
 async function addTask({ tab, title, dueDate, dueTime, location, createdBy }) {
-  const activityNo = await nextActivityNo(tab);
+  const activityNo = nextActivityNo(tab);
   const doc = {
     tab,
     activityNo,

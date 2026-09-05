@@ -224,7 +224,7 @@
   .progress-fill.overall{ background:var(--good); }
   .progress-fill.total-bar{ opacity:.35; }
 
-  .overdue-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0 10px 10px; border-bottom:1px solid var(--border); border-left:4px solid transparent; cursor:pointer; }
+  .overdue-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0 10px 10px; border-bottom:1px solid var(--border); border-left:4px solid transparent; cursor:pointer; gap:10px; }
   .important-day-row{ display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border); font-size:.9em; }
   .important-day-row:last-child{ border-bottom:none; }
   .important-day-row .t{ font-weight:600; }
@@ -233,8 +233,8 @@
   .overdue-row.tab-medium{ border-left-color:var(--medium-accent); }
   .overdue-row.tab-heavy{ border-left-color:var(--heavy-accent); }
   .overdue-row:last-child{ border-bottom:none; }
-  .overdue-row .t{ font-size:.92em; font-weight:600; }
-  .overdue-row .d{ font-size:.78em; color:var(--bad); font-weight:700; }
+  .overdue-row .t{ font-size:.92em; font-weight:600; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .overdue-row .d{ font-size:.78em; color:var(--bad); font-weight:700; flex-shrink:0; white-space:nowrap; }
   .empty-check{ text-align:center; padding:20px 10px; color:var(--text-dim); font-size:.9em; }
 
   /* ---------- Notification cards (rounded, like task cards) ---------- */
