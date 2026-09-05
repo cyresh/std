@@ -179,7 +179,7 @@ function notifCardHtml(t, subText, subClass) {
     <div class="notif-card tab-${t.tab}" data-task-id="${t.id}">
       <div class="n-main">
         <div class="n-title">${escapeHtml(t.title)} <span style="opacity:.5; font-weight:400;">(${t.activityNo})</span></div>
-        <div class="n-sub ${subClass || ''}">${subText}</div>
+        ${subText ? `<div class="n-sub ${subClass || ''}">${subText}</div>` : ''}
       </div>
       <button class="notif-close" data-dismiss-id="${t.id}" title="Dismiss">&#10005;</button>
     </div>`;
@@ -192,7 +192,7 @@ function renderNotificationsView() {
   const overdue = overdueTasks();
 
   todayList.innerHTML = today.length
-    ? today.map(t => notifCardHtml(t, t.dueTime ? formatTime(t.dueTime) : 'No specific time')).join('')
+    ? today.map(t => notifCardHtml(t, t.dueTime ? formatTime(t.dueTime) : '')).join('')
     : `<div class="empty-check">Nothing due today</div>`;
 
   overdueList.innerHTML = overdue.length
@@ -241,7 +241,7 @@ function checkAndFireNotifications() {
     notifiedThisSession.add(t.id);
     try {
       new Notification('Due today: ' + t.title, {
-        body: t.dueTime ? `At ${formatTime(t.dueTime)}` : 'No specific time set',
+        ...(t.dueTime ? { body: `At ${formatTime(t.dueTime)}` } : {}),
         icon: 'icon-192.png'
       });
     } catch (e) { /* Notification constructor unsupported in some mobile browsers */ }
@@ -821,13 +821,21 @@ function tabWashColor(name) {
       curEl.style.background = tabWashColor(currentTab);
       viewsEl.style.position = 'relative';
 
+      // prevEl/nextEl are absolutely positioned relative to #views, which is
+      // itself the scrolling container -- so top:0 lands in the SCROLLED
+      // coordinate space, not the visible viewport. If the list had been
+      // scrolled down at all, that misaligns them vertically from what's
+      // actually on screen (only vertically -- horizontal scroll doesn't
+      // exist here, which is why left/right always lined up fine while the
+      // top edge didn't). Anchoring to the current scrollTop fixes it.
+      const scrollTop = viewsEl.scrollTop + 'px';
       if (prevEl) {
         prevEl.classList.add('active');
-        Object.assign(prevEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(-100%)', zIndex: '1', animation: 'none', background: tabWashColor(prevName) });
+        Object.assign(prevEl.style, { position: 'absolute', top: scrollTop, left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(-100%)', zIndex: '1', animation: 'none', background: tabWashColor(prevName) });
       }
       if (nextEl) {
         nextEl.classList.add('active');
-        Object.assign(nextEl.style, { position: 'absolute', top: '0', left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(100%)', zIndex: '1', animation: 'none', background: tabWashColor(nextName) });
+        Object.assign(nextEl.style, { position: 'absolute', top: scrollTop, left: '0', width: '100%', minHeight: '100%', overflow: 'hidden', transform: 'translateX(100%)', zIndex: '1', animation: 'none', background: tabWashColor(nextName) });
       }
     }
 
@@ -1594,9 +1602,7 @@ document.getElementById('openEditBtn').addEventListener('click', () => {
   editTaskModal.classList.remove('hidden');
 });
 document.getElementById('cancelEditTask').addEventListener('click', () => editTaskModal.classList.add('hidden'));
-document.getElementById('saveEditTask').addEventListener('click', async () => {
-  const btn = document.getElementById('saveEditTask');
-  if (btn.disabled) return;
+document.getElementById('saveEditTask').addEventListener('click', () => {
   const title = document.getElementById('editTitleInput').value.trim();
   const dueDate = document.getElementById('editDueInput').value || null;
   const dueTime = document.getElementById('editTimeInput').value || null;
@@ -1605,24 +1611,17 @@ document.getElementById('saveEditTask').addEventListener('click', async () => {
   if (!title) { document.getElementById('editTaskError').textContent = 'Enter a title'; return; }
   if (!dueDate) { document.getElementById('editTaskError').textContent = 'Please add a due date before saving'; return; }
   document.getElementById('editTaskError').textContent = '';
-  btn.disabled = true;
-  const originalText = btn.textContent;
-  btn.textContent = 'Saving...';
-  try {
-    await updateTask(currentTaskId, { title, dueDate, dueTime, location, tab, createdBy: editSelectedCreator });
-    editTaskModal.classList.add('hidden');
-  } catch (err) {
-    document.getElementById('editTaskError').textContent = 'Could not save. Please try again.';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = originalText;
-  }
-});
-document.getElementById('deleteTaskBtn').addEventListener('click', async () => {
-  if (!confirm('Delete this task? This cannot be undone.')) return;
-  await deleteTask(currentTaskId);
+  // Optimistic: same reasoning as Add Task -- close immediately, save in the
+  // background, so offline behaves the same as online instead of hanging.
   editTaskModal.classList.add('hidden');
-  goToView(previousTabView);
+  updateTask(currentTaskId, { title, dueDate, dueTime, location, tab, createdBy: editSelectedCreator })
+    .catch(err => console.error('Failed to save task', err));
+});
+document.getElementById('deleteTaskBtn').addEventListener('click', () => {
+  if (!confirm('Delete this task? This cannot be undone.')) return;
+  editTaskModal.classList.add('hidden');
+  history.back();
+  deleteTask(currentTaskId).catch(err => console.error('Failed to delete task', err));
 });
 
 // ================= Add task modal =================
@@ -1667,9 +1666,7 @@ document.getElementById('quickAddBtn').addEventListener('click', () => {
   openAddTaskModal(targetTab);
 });
 document.getElementById('cancelAddTask').addEventListener('click', () => addTaskModal.classList.add('hidden'));
-document.getElementById('saveAddTask').addEventListener('click', async () => {
-  const btn = document.getElementById('saveAddTask');
-  if (btn.disabled) return; // guard against rapid double-taps while a save is in flight
+document.getElementById('saveAddTask').addEventListener('click', () => {
   const title = document.getElementById('addTaskTitleInput').value.trim();
   const dueDate = document.getElementById('addTaskDueInput').value || null;
   const dueTime = document.getElementById('addTaskTimeInput').value || null;
@@ -1677,18 +1674,13 @@ document.getElementById('saveAddTask').addEventListener('click', async () => {
   if (!title) { document.getElementById('addTaskError').textContent = 'Enter a title'; return; }
   if (!dueDate) { document.getElementById('addTaskError').textContent = 'Please add a due date before saving'; return; }
   document.getElementById('addTaskError').textContent = '';
-  btn.disabled = true;
-  const originalText = btn.textContent;
-  btn.textContent = 'Saving...';
-  try {
-    await addTask({ tab: addTaskTab, title, dueDate, dueTime, location, createdBy: addTaskSelectedCreator });
-    addTaskModal.classList.add('hidden');
-  } catch (err) {
-    document.getElementById('addTaskError').textContent = 'Could not save. Please try again.';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = originalText;
-  }
+  // Optimistic: close the modal immediately and let the write happen in the
+  // background. Firestore's offline persistence queues it and syncs once
+  // connectivity returns, so this responds the same way online or offline
+  // instead of blocking the screen on a "Saving..." state that could hang.
+  addTaskModal.classList.add('hidden');
+  addTask({ tab: addTaskTab, title, dueDate, dueTime, location, createdBy: addTaskSelectedCreator })
+    .catch(err => console.error('Failed to save task', err));
 });
 
 // ================= Auth + Firestore live sync =================
