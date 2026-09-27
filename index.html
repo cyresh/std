@@ -102,6 +102,15 @@
   .pin-dot.filled{ background:var(--accent); border-color:var(--accent); }
   .pin-dots.shake{ animation:shake .35s; }
   @keyframes shake{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-10px)} 40%{transform:translateX(10px)} 60%{transform:translateX(-8px)} 80%{transform:translateX(8px)} }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .spinner{ width:34px; height:34px; border-radius:50%; border:3px solid var(--border); border-top-color:var(--accent); animation:spin .7s linear infinite; }
+  .lock-spinner{ margin:4px 0 18px; }
+  /* Full-screen overlay shown any time the app has to wait on something
+     (a lazy-loaded script, a slow network call) so there's never a silent
+     freeze -- always a visible spinner instead. */
+  #globalLoadingOverlay{ position:fixed; inset:0; z-index:200; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px; text-align:center; animation:fade .15s ease; }
+  #globalLoadingOverlay .g-msg{ color:var(--text-dim); font-size:.95em; max-width:280px; }
+  #globalLoadingOverlay .btn{ width:auto; padding:10px 24px; }
   .keypad{ display:grid; grid-template-columns:repeat(3,72px); gap:16px; }
   .key{ width:72px; height:72px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:1.4em; font-weight:600; display:flex; align-items:center; justify-content:center; cursor:pointer; }
   .key:active{ background:var(--surface-2); }
@@ -616,6 +625,7 @@
 <!-- Lock screen (6-digit shared PIN) -->
 <div id="lockscreen" class="hidden">
   <div class="lock-title" id="lockTitle">Enter PIN</div>
+  <div class="spinner lock-spinner hidden" id="lockSpinner"></div>
   <div class="lock-app">Std</div>
   <div class="pin-dots" id="pinDots">
     <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
@@ -756,12 +766,28 @@
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="firebase-config.js"></script>
-<script src="astronomy.min.js"></script>
-<script src="db.js"></script>
-<script src="app.js"></script>
+<!-- defer: lets the browser fetch all of these in parallel while it keeps parsing
+     the page, instead of downloading+executing them one at a time. Execution
+     still happens in this exact order once parsing is done, so nothing here
+     changes behavior. astronomy.min.js (Tamil calendar data) is intentionally
+     NOT loaded here -- it's fetched on demand the first time the Calendar tab
+     is opened (see ensureAstronomyLoaded() in app.js), showing the loading
+     overlay below while it downloads. -->
+<!-- Global loading overlay: shown by ensureAstronomyLoaded() (and reusable for
+     any other on-demand load) so a slow connection shows a spinner, never a
+     frozen screen. -->
+<div id="globalLoadingOverlay" class="hidden">
+  <div class="spinner"></div>
+  <div class="g-msg" id="globalLoadingMsg">Loading...</div>
+  <div class="g-msg" id="globalLoadingError" style="color:var(--bad); display:none;"></div>
+  <button class="btn secondary hidden" id="globalLoadingRetryBtn">Retry</button>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
+<script src="firebase-config.js" defer></script>
+<script src="db.js" defer></script>
+<script src="app.js" defer></script>
 </body>
 </html>

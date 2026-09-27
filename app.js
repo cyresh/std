@@ -328,9 +328,12 @@ function enterMainLockout(until) {
   });
 }
 
+const lockSpinner = document.getElementById('lockSpinner');
+
 async function startLockFlow() {
   lockMode = 'loading';
   lockTitle.textContent = 'Loading...';
+  lockSpinner.classList.remove('hidden');
   lockError.textContent = '';
   document.getElementById('lockRetryBtn').style.display = 'none';
   resetPinEntry();
@@ -342,11 +345,13 @@ async function startLockFlow() {
   try {
     sec = await withTimeout(getSecurityDoc(), 10000);
   } catch (err) {
+    lockSpinner.classList.add('hidden');
     lockTitle.textContent = 'Connection error';
     lockError.textContent = "Couldn't reach the server — check your internet connection.";
     document.getElementById('lockRetryBtn').style.display = 'inline-block';
     return;
   }
+  lockSpinner.classList.add('hidden');
   globalPinHash = sec ? sec.pinHash : null;
   const lastUnlock = localStorage.getItem('std_last_unlock_date');
 
@@ -1313,6 +1318,62 @@ function runSearch() {
 
 document.getElementById('searchInput').addEventListener('input', runSearch);
 
+// ================= On-demand script loading + loading overlay =================
+// astronomy.min.js (~47KB gzipped) is only needed for the Calendar tab's Tamil
+// panchangam data, so it isn't loaded at startup -- it's fetched the first time
+// the user opens Calendar. This overlay is shown for the (usually brief) wait
+// so there's always a visible spinner instead of a frozen/blank screen, and
+// never anything for users who never open Calendar at all.
+const globalLoadingOverlay = document.getElementById('globalLoadingOverlay');
+const globalLoadingMsg = document.getElementById('globalLoadingMsg');
+const globalLoadingError = document.getElementById('globalLoadingError');
+const globalLoadingRetryBtn = document.getElementById('globalLoadingRetryBtn');
+
+function showGlobalLoading(msg) {
+  globalLoadingMsg.textContent = msg;
+  globalLoadingMsg.style.display = 'block';
+  globalLoadingError.style.display = 'none';
+  globalLoadingRetryBtn.classList.add('hidden');
+  globalLoadingOverlay.classList.remove('hidden');
+}
+function showGlobalLoadingError(msg, onRetry) {
+  globalLoadingMsg.style.display = 'none';
+  globalLoadingError.textContent = msg;
+  globalLoadingError.style.display = 'block';
+  globalLoadingRetryBtn.classList.remove('hidden');
+  globalLoadingRetryBtn.onclick = onRetry;
+  globalLoadingOverlay.classList.remove('hidden');
+}
+function hideGlobalLoading() {
+  globalLoadingOverlay.classList.add('hidden');
+}
+
+const loadedScripts = new Set();
+function loadScriptOnce(src) {
+  if (loadedScripts.has(src)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = () => { loadedScripts.add(src); resolve(); };
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+let astronomyLoadPromise = null;
+function ensureAstronomyLoaded() {
+  if (typeof Astronomy !== 'undefined') return Promise.resolve();
+  if (astronomyLoadPromise) return astronomyLoadPromise;
+  showGlobalLoading('Loading calendar data...');
+  astronomyLoadPromise = loadScriptOnce('astronomy.min.js')
+    .then(() => { hideGlobalLoading(); })
+    .catch((err) => {
+      astronomyLoadPromise = null; // allow retry
+      throw err;
+    });
+  return astronomyLoadPromise;
+}
+
 // ================= Tamil Panchangam (Lahiri ayanamsa, computed via astronomy-engine) =================
 const TAMIL_MONTHS = ['Chithirai', 'Vaikasi', 'Aani', 'Aadi', 'Aavani', 'Purattasi', 'Aippasi', 'Karthigai', 'Margazhi', 'Thai', 'Maasi', 'Panguni'];
 const TAMIL_MONTHS_SHORT = ['Chi', 'Vai', 'Aan', 'Aad', 'Aav', 'Pur', 'Aip', 'Kar', 'Mar', 'Tha', 'Maa', 'Pan'];
@@ -1397,7 +1458,20 @@ function getOrComputeTamilInfo(d) {
 }
 
 // ================= Calendar =================
-function renderCalendar() {
+async function renderCalendar() {
+  try {
+    await ensureAstronomyLoaded();
+  } catch (err) {
+    document.getElementById('calGrid').innerHTML = `<div class="empty-state">Couldn't load calendar data.</div>`;
+    showGlobalLoadingError("Couldn't load calendar data — check your connection.", () => {
+      hideGlobalLoading();
+      renderCalendar();
+    });
+    return;
+  }
+  // currentTab may have changed while we were waiting on the network.
+  if (currentTab !== 'calendar') return;
+
   document.getElementById('calMonthLabel').textContent = new Date(calYear, calMonth, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   const grid = document.getElementById('calGrid');
   const firstDow = new Date(calYear, calMonth, 1).getDay();
