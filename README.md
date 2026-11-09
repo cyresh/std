@@ -2,66 +2,82 @@
 
 A simple cloud-synced to-do app with three workload tabs (Simple / Medium / Heavy) plus a Home dashboard.
 
+**Live app:** https://cyresh.github.io/std/
+
+## Features
+- Three workload groups (Simple / Medium / Heavy, renameable) with a Home dashboard, Calendar (with Tamil panchangam), Search and Reminders
+- Tasks with activity numbers, due date/time, location, created-by, and a timestamped notes/progress log
+- **Archive** — park tasks that can't be done yet without closing them. Archive icon on each open task and on the task screen; archived tasks sit in a collapsed *Archived* group at the bottom of each tab, are excluded from overdue/reminders/progress, and can be restored any time (also searchable via the *Archived* filter)
+- **Repeating tasks** — Daily, Weekly, Every 2 weeks, Monthly, Every 3 months, Every 6 months, Yearly or Custom. Choose *fixed schedule* (from due date) or *after I complete it* (from completion date). Completing a repeating task creates the next copy automatically; archiving pauses the series
+- Google sign-in, shared 6-digit PIN (asked once per day per device), dark/light theme
+- Installable PWA with offline caching
+
 ## Files
-- `index.html` — structure + all styling (dark/light theme, sticky-note tab colors)
-- `firebase-config.js` — your Firebase project credentials (**edit this before use**)
-- `db.js` — Firestore read/write layer
-- `app.js` — app logic (UI, PIN lock, rendering)
-- `manifest.json` — PWA manifest
-- `icon-192.png`, `icon-512.png`, `logo.svg` — app icon
+- `index.html` — structure + all styling
+- `app.js` — app logic (UI, sign-in, PIN lock, rendering)
+- `db.js` — Firestore data layer (tasks, archive, recurrence, PIN, settings)
+- `firebase-config.js` — Firebase project config (public web config; access is controlled by the rules below)
+- `sw.js` — service worker (app-shell + Firebase SDK caching)
+- `astronomy.min.js` — Tamil calendar data, loaded only when the Calendar tab is opened
+- `manifest.json`, `icon-192.png`, `icon-512.png`, `logo.svg` — PWA manifest and icons
 
 ## 1. Create a Firebase project
-1. Go to https://console.firebase.google.com and create a new project (free Spark plan is enough).
-2. In the project, go to **Build → Firestore Database → Create database**. Start in **production mode** (rules below lock it down anyway).
-3. Go to **Project settings → General → Your apps**, click the web icon (`</>`), register an app (no hosting needed).
-4. Copy the `firebaseConfig` object it gives you into `firebase-config.js`, replacing the placeholder values.
+1. Go to https://console.firebase.google.com and create a project (free Spark plan is enough).
+2. **Build → Firestore Database → Create database** (production mode).
+3. **Project settings → General → Your apps** → add a web app, then copy the `firebaseConfig` into `firebase-config.js`.
 
-## 2. Firestore security rules
-Since there's no traditional login, this app uses **Firebase Anonymous Auth**: each device silently signs in as an anonymous user, and Firestore rules require `request.auth != null`. This means your data isn't wide open even though `firebase-config.js` (with your project's public API key) lives in your GitHub repo.
+## 2. Sign-in (Google only)
+1. **Build → Authentication → Sign-in method** → enable **Google**.
+2. Leave **Anonymous** **disabled**.
+3. **Authentication → Settings → Authorized domains** → make sure `cyresh.github.io` is listed.
+4. Open the live app and sign in once with the Google account that should own the data, then copy that account's **User UID** from **Authentication → Users**.
 
-**Enable anonymous sign-in:**
-1. Firebase console → **Build → Authentication → Sign-in method**.
-2. Enable the **Anonymous** provider → Save.
+Every device must sign in once with the same Google account.
 
-**Set the rules:**
-Firestore Database → **Rules** tab → replace the contents with:
+## 3. Firestore security rules
+Only your own Google account can read or write. In **Firestore Database → Rules**, replace the UID placeholder and publish:
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null
+        && request.auth.uid == 'YOUR_GOOGLE_ACCOUNT_UID'
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
     }
   }
 }
 ```
-Click **Publish**.
+Test it in the **Rules Playground** (provider `google.com`, your UID → allowed; any other UID → denied) before publishing.
 
-This still isn't per-person access control (any anonymous session can read/write everything), but it blocks the "anyone on the internet without even opening your app" case that Firebase's public-rules warning flags.
+## 4. Restrict the API key
+In Google Cloud Console → **APIs & Services → Credentials**, open the browser key for the project:
+- **Application restrictions → Websites:** `https://cyresh.github.io/*` and `https://<project-id>.firebaseapp.com/*`
+- **API restrictions → Restrict key:** Identity Toolkit API, Token Service API, Cloud Firestore API (add Firebase Installations API only if the console shows it is blocked)
 
-## 3. Push to GitHub
-```bash
-git init
-git add .
-git commit -m "Initial Std app"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo>.git
-git push -u origin main
-```
+## 5. Deploy (GitHub Pages)
+1. Push the files to the `main` branch of the repo (`cyresh/std`).
+2. **Settings → Pages** → Source: **Deploy from a branch** → `main`, folder `/ (root)`.
+3. The app is served at https://cyresh.github.io/std/ within a minute or two.
 
-## 4. Deploy (GitHub Pages)
-1. In your GitHub repo: **Settings → Pages**.
-2. Source: **Deploy from a branch** → branch `main`, folder `/ (root)`.
-3. Save — your app will be live at `https://<your-username>.github.io/<your-repo>/` within a minute or two.
+**Every time you deploy changes:** bump `CACHE_VERSION` in `sw.js` (e.g. `std-v4` → `std-v5`) so installed devices pick up the new files. Reload the app twice after deploying.
 
-## 5. First run (after this update)
-- The PIN is now **shared/global**: one PIN works on every device, stored in Firestore, editable any time from Settings → Change PIN.
-- Since this replaces the old per-device PIN, whichever device opens the updated app first will be asked to **set the new shared PIN** (entered twice to confirm). Every other device will then be asked to enter that same PIN the next time it opens the app.
-- After that, each device still only asks once per calendar day (that check stays local per device — only the PIN value itself is shared).
-- Add tasks from each tab's **+ Add task** button. Tap any task to view it, then tap **Edit** to change its details, move it between groups, or delete it. Adding a progress note and marking complete/reopening stay directly on the task view.
-- The **Calendar** and **Settings** icons are in the top-right corner. Theme (dark/light) and the three "created by" names are both set from Settings.
+## How loading stays fast
+- `sw.js` caches the app files and the pinned Firebase SDK, so repeat launches don't wait on the network.
+- The PIN lock decision is made locally at startup (cached PIN hash + "unlocked today" flag). The server copy is re-checked in the background; if the shared PIN was changed on another device, this device locks again immediately.
+- Firestore offline persistence serves tasks from the local cache while syncing in the background.
+- Only the very first run on a new device needs the network for the PIN check.
 
-## Notes / known limits
-- Single shared Firestore collection — every device with the PIN sees the same data (by design, per your single-user spec).
-- No offline queue beyond Firestore's built-in local cache — should work fine on flaky connections, but isn't tested for fully offline use.
-- PIN is a shared 4-digit value stored in Firestore (`meta/security`), not a proper encrypted vault — matches the "minimum security gate" you asked for, not meant to protect sensitive data. Anyone who knows the PIN can unlock any device running the app.
+## PIN notes
+- The PIN is shared across devices and stored as a hash in Firestore (`meta/security`). Change it from Settings → Change PIN.
+- It is a convenience screen lock, not an encrypted vault. The real protection is your Google account (turn on 2-step verification) plus the Firestore rules above.
+
+## Data layout
+- `tasks` — `{ tab, activityNo, title, dueDate, dueTime, location, createdBy, status: open|completed|archived, createdAt, completedAt, archivedAt, repeat: { every, unit, from, anchor } | null, nextSpawned, notes[] }`
+- `meta/security` — `{ pinHash }`
+- `meta/appSettings` — `{ createdByNames[], tabLabels{} }`
+
+## Known limits
+- Single shared data set — whoever signs in with the authorised Google account sees the same tasks (by design, single user).
+- Fully offline use relies on Firestore's local cache and the service worker; changes sync when the connection returns.
+- Installed to a phone home screen, the Google sign-in popup can be blocked on some browsers (notably iOS standalone mode); sign in once in the normal browser first.
