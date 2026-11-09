@@ -4,6 +4,7 @@ let currentTab = 'home';
 let previousTabView = 'home';
 let currentTaskId = null;
 let completedCollapsed = { simple: false, medium: false, heavy: false };
+let archivedCollapsed = { simple: true, medium: true, heavy: true };
 const UPCOMING_GROUPS = ['today', 'tomorrow', 'thisWeek', 'nextWeek', 'thisMonth', 'nextMonth', 'later'];
 let upcomingCollapsed = { today: true, tomorrow: true, thisWeek: true, nextWeek: true, thisMonth: true, nextMonth: true, later: true };
 let creatorNames = ['Name 1', 'Name 2', 'Name 3'];
@@ -105,6 +106,72 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// ================= Archive + repeat helpers =================
+const ARCHIVE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>';
+
+function statusBadgeHtml(t) {
+  if (t.status === 'completed') return '<span class="status-badge completed">Completed</span>';
+  if (t.status === 'archived') return '<span class="status-badge archived">Archived</span>';
+  if (isOverdue(t)) return '<span class="status-badge overdue">Overdue</span>';
+  return '<span class="status-badge open">Open</span>';
+}
+
+const REPEAT_PRESETS = {
+  d1: { every: 1, unit: 'day' }, w1: { every: 1, unit: 'week' }, w2: { every: 2, unit: 'week' },
+  m1: { every: 1, unit: 'month' }, m3: { every: 3, unit: 'month' }, m6: { every: 6, unit: 'month' },
+  y1: { every: 1, unit: 'year' }
+};
+const REPEAT_NAMES = { d1: 'Daily', w1: 'Weekly', w2: 'Every 2 weeks', m1: 'Monthly', m3: 'Every 3 months', m6: 'Every 6 months', y1: 'Yearly' };
+
+function repeatKey(r) {
+  if (!r || !r.every) return 'none';
+  for (const k in REPEAT_PRESETS) if (REPEAT_PRESETS[k].every === r.every && REPEAT_PRESETS[k].unit === r.unit) return k;
+  return 'custom';
+}
+function repeatLabel(r) {
+  if (!r || !r.every) return '\u2014';
+  const k = repeatKey(r);
+  let txt = REPEAT_NAMES[k] || `Every ${r.every} ${r.unit}${r.every > 1 ? 's' : ''}`;
+  if (r.from === 'done') txt += ' after completion';
+  return txt;
+}
+function syncRepeatRows(p) {
+  const v = document.getElementById(p + 'RepeatSelect').value;
+  document.getElementById(p + 'RepeatCustomRow').classList.toggle('hidden', v !== 'custom');
+  document.getElementById(p + 'RepeatFromRow').classList.toggle('hidden', v === 'none');
+}
+function fillRepeat(p, r) {
+  const key = repeatKey(r);
+  document.getElementById(p + 'RepeatSelect').value = key;
+  document.getElementById(p + 'RepeatEvery').value = key === 'custom' ? r.every : 1;
+  document.getElementById(p + 'RepeatUnit').value = key === 'custom' ? r.unit : 'day';
+  document.getElementById(p + 'RepeatFrom').value = (r && r.from) || 'due';
+  syncRepeatRows(p);
+}
+function buildRepeat(p, dueDate, existing) {
+  const v = document.getElementById(p + 'RepeatSelect').value;
+  if (v === 'none') return null;
+  let every, unit;
+  if (v === 'custom') {
+    every = Math.max(1, Math.min(365, parseInt(document.getElementById(p + 'RepeatEvery').value, 10) || 1));
+    unit = document.getElementById(p + 'RepeatUnit').value;
+  } else { every = REPEAT_PRESETS[v].every; unit = REPEAT_PRESETS[v].unit; }
+  const from = document.getElementById(p + 'RepeatFrom').value;
+  const old = existing && existing.repeat;
+  const same = old && old.every === every && old.unit === unit && old.from === from && existing.dueDate === dueDate;
+  return { every, unit, from, anchor: (same && old.anchor) ? old.anchor : dueDate };
+}
+['add', 'edit'].forEach(p => document.getElementById(p + 'RepeatSelect').addEventListener('change', () => syncRepeatRows(p)));
+
+function updateDetailButtons(t) {
+  const completeBtn = document.getElementById('toggleCompleteBtn');
+  const archBtn = document.getElementById('archiveBtn');
+  completeBtn.classList.toggle('hidden', t.status === 'archived');
+  completeBtn.textContent = t.status === 'completed' ? 'Reopen task' : 'Mark complete';
+  archBtn.classList.toggle('hidden', t.status === 'completed');
+  document.getElementById('archiveBtnLabel').textContent = t.status === 'archived' ? 'Restore to open' : 'Archive';
 }
 
 // ================= Theme =================
@@ -1013,6 +1080,13 @@ function renderCreatorChips(container, selected, onSelect) {
 // ================= Settings =================
 const CHANGELOG = [
   {
+    version: '1.5.0', date: 'Nov 2026', notes: [
+      'Archive: park tasks that can\'t be done yet without closing them — archive icon on each task, Archived group at the bottom of each tab, restore any time',
+      'Repeating tasks: daily, weekly, monthly, yearly or custom intervals, on a fixed schedule or counted from when you complete it',
+      'Google sign-in, faster loading with offline caching'
+    ]
+  },
+  {
     version: '1.4.0', date: 'Sept 2026', notes: [
       'Tamil calendar added to the Calendar view — Tamil month/date shown per day, full panchangam (year name, nakshatram, thithi) on tap, computed astronomically'
     ]
@@ -1172,6 +1246,7 @@ function renderTabList(tab) {
   const tasks = allTasks.filter(t => t.tab === tab);
   const open = tasks.filter(t => t.status === 'open').sort((a, b) => (a.dueDate || '9999') < (b.dueDate || '9999') ? -1 : 1);
   const completed = tasks.filter(t => t.status === 'completed').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  const archived = tasks.filter(t => t.status === 'archived').sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
   const dateGroups = assignDateGroups(open);
 
   let html = `<div class="group-header">Open (${open.length})</div>`;
@@ -1180,26 +1255,42 @@ function renderTabList(tab) {
   if (!completedCollapsed[tab]) {
     html += completed.length ? completed.map(t => taskCardHtml(t)).join('') : `<div class="empty-state">Nothing completed yet</div>`;
   }
+  if (archived.length) {
+    html += `<div class="group-header" data-toggle-archived="${tab}"><span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;display:inline-flex;">${ARCHIVE_SVG}</span>Archived (${archived.length})</span> <span>${archivedCollapsed[tab] ? '&#9656;' : '&#9662;'}</span></div>`;
+    if (!archivedCollapsed[tab]) html += archived.map(t => taskCardHtml(t)).join('');
+  }
   container.innerHTML = html;
 
   container.querySelectorAll('[data-task-id]').forEach(el => {
-    el.addEventListener('click', (e) => { if (!e.target.closest('.tick-btn')) openTaskDetail(el.dataset.taskId); });
+    el.addEventListener('click', (e) => { if (!e.target.closest('.tick-btn') && !e.target.closest('.arch-btn')) openTaskDetail(el.dataset.taskId); });
+  });
+  container.querySelectorAll('.arch-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.closest('[data-task-id]').dataset.taskId;
+      const task = allTasks.find(t => t.id === id);
+      if (!task) return;
+      (task.status === 'archived' ? restoreTask(id) : archiveTask(id)).catch(err => console.error('Archive failed', err));
+    });
   });
   container.querySelectorAll('.tick-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = btn.closest('[data-task-id]').dataset.taskId;
       const task = allTasks.find(t => t.id === id);
-      setTaskStatus(id, task.status === 'open' ? 'completed' : 'open');
+      if (task.status === 'open') completeTask(task).catch(err => console.error('Complete failed', err));
+      else setTaskStatus(id, 'open');
     });
   });
   const toggleHeader = container.querySelector('[data-toggle-completed]');
   if (toggleHeader) toggleHeader.addEventListener('click', () => { completedCollapsed[tab] = !completedCollapsed[tab]; renderTabList(tab); });
+  const archHeader = container.querySelector('[data-toggle-archived]');
+  if (archHeader) archHeader.addEventListener('click', () => { archivedCollapsed[tab] = !archivedCollapsed[tab]; renderTabList(tab); });
 }
 
 function taskCardHtml(t, dateGroupClass) {
   const overdueClass = isOverdue(t) ? 'overdue' : '';
-  const completedClass = t.status === 'completed' ? 'completed' : '';
+  const completedClass = t.status === 'completed' ? 'completed' : (t.status === 'archived' ? 'archived' : '');
   const byTag = t.createdBy ? ` &middot; ${escapeHtml(t.createdBy)}` : '';
   const timeTag = t.dueTime ? `, ${formatTime(t.dueTime)}` : '';
   const locHtml = t.location ? `<div class="task-card-loc">&#128205; ${escapeHtml(t.location)}</div>` : '';
@@ -1208,10 +1299,13 @@ function taskCardHtml(t, dateGroupClass) {
       <div class="task-card-main">
         <div class="task-card-no">${t.activityNo}${byTag}</div>
         <div class="task-card-title">${escapeHtml(t.title)}</div>
-        <div class="task-card-due ${overdueClass}">${formatDate(t.dueDate)}${timeTag}</div>
+        <div class="task-card-due ${overdueClass}">${formatDate(t.dueDate)}${timeTag}${t.repeat ? ' &middot; &#8635; ' + escapeHtml(repeatLabel(t.repeat)) : ''}</div>
         ${locHtml}
       </div>
-      <button class="tick-btn ${t.status === 'completed' ? 'done' : ''}">&#10003;</button>
+      <div class="card-actions">
+        ${t.status === 'open' ? `<button class="arch-btn" title="Archive">${ARCHIVE_SVG}</button>` : ''}
+        ${t.status === 'archived' ? `<button class="arch-btn active" title="Restore to open">${ARCHIVE_SVG}</button>` : `<button class="tick-btn ${t.status === 'completed' ? 'done' : ''}">&#10003;</button>`}
+      </div>
     </div>`;
 }
 
@@ -1225,18 +1319,23 @@ function renderHome() {
   document.getElementById('homeCompletedCount').textContent = completed.length;
   document.getElementById('homeOverdueCount').textContent = overdue.length;
 
-  const totals = ['simple', 'medium', 'heavy'].map(tab => allTasks.filter(t => t.tab === tab).length);
+  const archivedCount = allTasks.filter(t => t.status === 'archived').length;
+  document.getElementById('homeArchivedCount').textContent = archivedCount;
+  document.getElementById('homeArchivedLine').classList.toggle('hidden', archivedCount === 0);
+  const countable = allTasks.filter(t => t.status !== 'archived');
+
+  const totals = ['simple', 'medium', 'heavy'].map(tab => countable.filter(t => t.tab === tab).length);
   const maxTotal = Math.max(1, ...totals);
 
   ['simple', 'medium', 'heavy'].forEach(tab => {
-    const tabTasks = allTasks.filter(t => t.tab === tab);
+    const tabTasks = countable.filter(t => t.tab === tab);
     const tabCompleted = tabTasks.filter(t => t.status === 'completed').length;
     document.getElementById(tab + 'Counts').textContent = `${tabCompleted}/${tabTasks.length}`;
     document.getElementById(tab + 'TotalBar').style.width = ((tabTasks.length / maxTotal) * 100) + '%';
     document.getElementById(tab + 'CompletedBar').style.width = ((tabCompleted / maxTotal) * 100) + '%';
   });
 
-  const overallPct = allTasks.length ? Math.round((completed.length / allTasks.length) * 100) : 0;
+  const overallPct = countable.length ? Math.round((completed.length / countable.length) * 100) : 0;
   document.getElementById('overallPct').textContent = overallPct + '%';
   document.getElementById('overallBar').style.width = overallPct + '%';
 
@@ -1288,7 +1387,7 @@ function renderHomeUpcoming(openNonOverdueTasks) {
 }
 
 // ================= Search =================
-let searchStatusFilters = new Set(); // subset of {'open','completed'}; empty = no status filter
+let searchStatusFilters = new Set(); // subset of {'open','completed','archived'}; empty = no status filter
 let searchToggleFilters = new Set(); // subset of {'loc','time'}; a plain "has a value" filter, since
                                       // locations/times can be many different values (unlike creators)
 let searchByFilter = null;           // a creator name, or null
@@ -1299,6 +1398,7 @@ function updateSearchFilterChipStyles() {
     let active = false;
     if (f === 'open') active = searchStatusFilters.has('open');
     else if (f === 'completed') active = searchStatusFilters.has('completed');
+    else if (f === 'archived') active = searchStatusFilters.has('archived');
     else if (f === 'by') active = !!searchByFilter;
     else if (f === 'loc' || f === 'time') active = searchToggleFilters.has(f);
     btn.classList.toggle('selected', active);
@@ -1325,7 +1425,7 @@ document.getElementById('searchFilterRow').addEventListener('click', (e) => {
   const f = btn.dataset.filter;
   const byRow = document.getElementById('searchByRow');
 
-  if (f === 'open' || f === 'completed') {
+  if (f === 'open' || f === 'completed' || f === 'archived') {
     if (searchStatusFilters.has(f)) searchStatusFilters.delete(f); else searchStatusFilters.add(f);
     updateSearchFilterChipStyles();
     runSearch();
@@ -1359,9 +1459,7 @@ function runSearch() {
   });
 
   results.innerHTML = matches.length ? matches.map(t => {
-    const statusHtml = t.status === 'completed' ? '<span class="status-badge completed">Completed</span>'
-      : isOverdue(t) ? '<span class="status-badge overdue">Overdue</span>'
-      : '<span class="status-badge open">Open</span>';
+    const statusHtml = statusBadgeHtml(t);
     return `
     <div class="task-card" data-task-id="${t.id}" style="background:var(--surface); border:1px solid var(--border); color:var(--text);">
       <div class="task-card-main">
@@ -1547,7 +1645,7 @@ async function renderCalendar() {
   for (let i = 0; i < firstDow; i++) html += `<div class="cal-day empty"></div>`;
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const dayTasks = allTasks.filter(t => t.dueDate === dateStr);
+    const dayTasks = allTasks.filter(t => t.dueDate === dateStr && t.status !== 'archived');
     const tabsPresent = [...new Set(dayTasks.map(t => t.tab))];
     const dots = tabsPresent.map(tab => `<span class="dot ${tab}"></span>`).join('');
     const tInfo = getOrComputeTamilInfo(monthDates[d - 1]);
@@ -1556,7 +1654,7 @@ async function renderCalendar() {
   }
   grid.innerHTML = html;
   grid.querySelectorAll('.cal-day[data-date]').forEach(cell => {
-    cell.addEventListener('click', () => openDayTasksModal(cell.dataset.date, allTasks.filter(t => t.dueDate === cell.dataset.date)));
+    cell.addEventListener('click', () => openDayTasksModal(cell.dataset.date, allTasks.filter(t => t.dueDate === cell.dataset.date && t.status !== 'archived')));
   });
 }
 
@@ -1638,12 +1736,9 @@ function openTaskDetail(id) {
   document.getElementById('viewGroup').textContent = labelFor(t.tab);
   document.getElementById('viewCreatedBy').textContent = t.createdBy || '\u2014';
 
-  let statusHtml = t.status === 'completed' ? '<span class="status-badge completed">Completed</span>'
-    : isOverdue(t) ? '<span class="status-badge overdue">Overdue</span>'
-    : '<span class="status-badge open">Open</span>';
-  document.getElementById('viewStatus').innerHTML = statusHtml;
-
-  document.getElementById('toggleCompleteBtn').textContent = t.status === 'completed' ? 'Reopen task' : 'Mark complete';
+  document.getElementById('viewStatus').innerHTML = statusBadgeHtml(t);
+  document.getElementById('viewRepeat').textContent = repeatLabel(t.repeat);
+  updateDetailButtons(t);
   renderNotes(t);
   goToView('taskDetail');
 }
@@ -1710,8 +1805,21 @@ document.getElementById('toggleCompleteBtn').addEventListener('click', async () 
   const t = allTasks.find(t => t.id === currentTaskId);
   const wasOpen = t.status === 'open';
   const targetTab = t.tab;
-  await setTaskStatus(currentTaskId, wasOpen ? 'completed' : 'open');
+  if (wasOpen) completeTask(t).catch(err => console.error('Complete failed', err));
+  else await setTaskStatus(currentTaskId, 'open');
   if (wasOpen) {
+    navigateWithSlide(targetTab);
+  }
+});
+
+document.getElementById('archiveBtn').addEventListener('click', () => {
+  const t = allTasks.find(t => t.id === currentTaskId);
+  if (!t) return;
+  if (t.status === 'archived') {
+    restoreTask(t.id).catch(err => console.error('Restore failed', err));
+  } else {
+    const targetTab = t.tab;
+    archiveTask(t.id).catch(err => console.error('Archive failed', err));
     navigateWithSlide(targetTab);
   }
 });
@@ -1730,6 +1838,7 @@ document.getElementById('openEditBtn').addEventListener('click', () => {
   document.getElementById('editTimeInput').value = t.dueTime || '';
   document.getElementById('editLocationInput').value = t.location || '';
   document.getElementById('editGroupInput').value = t.tab;
+  fillRepeat('edit', t.repeat);
   document.getElementById('editTaskError').textContent = '';
   editSelectedCreator = t.createdBy || null;
   renderCreatorChips(document.getElementById('editCreatorChips'), editSelectedCreator, selectEditCreator);
@@ -1748,7 +1857,9 @@ document.getElementById('saveEditTask').addEventListener('click', () => {
   // Optimistic: same reasoning as Add Task -- close immediately, save in the
   // background, so offline behaves the same as online instead of hanging.
   editTaskModal.classList.add('hidden');
-  updateTask(currentTaskId, { title, dueDate, dueTime, location, tab, createdBy: editSelectedCreator })
+  const existing = allTasks.find(x => x.id === currentTaskId);
+  const repeat = buildRepeat('edit', dueDate, existing);
+  updateTask(currentTaskId, { title, dueDate, dueTime, location, tab, createdBy: editSelectedCreator, repeat })
     .catch(err => console.error('Failed to save task', err));
 });
 document.getElementById('deleteTaskBtn').addEventListener('click', () => {
@@ -1777,6 +1888,7 @@ function openAddTaskModal(tab) {
   document.getElementById('addTaskDueInput').value = todayStr();
   document.getElementById('addTaskTimeInput').value = '';
   document.getElementById('addTaskLocationInput').value = '';
+  fillRepeat('add', null);
   document.getElementById('addTaskError').textContent = '';
   addTaskSelectedCreator = null;
   renderCreatorChips(document.getElementById('addTaskCreatorChips'), addTaskSelectedCreator, selectAddTaskCreator);
@@ -1813,7 +1925,8 @@ document.getElementById('saveAddTask').addEventListener('click', () => {
   // connectivity returns, so this responds the same way online or offline
   // instead of blocking the screen on a "Saving..." state that could hang.
   addTaskModal.classList.add('hidden');
-  addTask({ tab: addTaskTab, title, dueDate, dueTime, location, createdBy: addTaskSelectedCreator })
+  const repeat = buildRepeat('add', dueDate, null);
+  addTask({ tab: addTaskTab, title, dueDate, dueTime, location, createdBy: addTaskSelectedCreator, repeat })
     .catch(err => console.error('Failed to save task', err));
 });
 
@@ -1827,7 +1940,8 @@ function refreshCurrentView() {
   if (currentTab === 'taskDetail' && currentTaskId) {
     const t = allTasks.find(t => t.id === currentTaskId);
     if (t) {
-      document.getElementById('toggleCompleteBtn').textContent = t.status === 'completed' ? 'Reopen task' : 'Mark complete';
+      updateDetailButtons(t);
+      document.getElementById('viewStatus').innerHTML = statusBadgeHtml(t);
       renderNotes(t);
     }
   }

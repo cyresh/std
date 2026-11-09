@@ -32,7 +32,7 @@ function nextActivityNo(tab) {
   return `${prefix}-${String(maxNum + 1).padStart(3, '0')}`;
 }
 
-async function addTask({ tab, title, dueDate, dueTime, location, createdBy }) {
+async function addTask({ tab, title, dueDate, dueTime, location, createdBy, repeat }) {
   const activityNo = nextActivityNo(tab);
   const doc = {
     tab,
@@ -45,6 +45,7 @@ async function addTask({ tab, title, dueDate, dueTime, location, createdBy }) {
     status: 'open',
     createdAt: Date.now(),
     completedAt: null,
+    repeat: repeat || null,
     notes: []
   };
   const ref = await TASKS_COL.add(doc);
@@ -115,4 +116,87 @@ function setCreatorNames(names) {
 
 function setTabLabels(labels) {
   return APP_SETTINGS_DOC.set({ tabLabels: labels }, { merge: true });
+}
+
+
+// ---------- Archive ----------
+// Archived = parked: not open (no overdue / reminders), not completed (not closed).
+// Archiving an open recurring task pauses the series (no next copy is created).
+function archiveTask(id) {
+  const now = Date.now();
+  return TASKS_COL.doc(id).update({
+    status: 'archived',
+    archivedAt: now,
+    notes: firebase.firestore.FieldValue.arrayUnion({ ts: now, text: 'Archived' })
+  });
+}
+
+function restoreTask(id) {
+  const now = Date.now();
+  return TASKS_COL.doc(id).update({
+    status: 'open',
+    archivedAt: null,
+    notes: firebase.firestore.FieldValue.arrayUnion({ ts: now, text: 'Restored from archive' })
+  });
+}
+
+// ---------- Recurrence ----------
+// task.repeat = { every:N, unit:'day'|'week'|'month'|'year', from:'due'|'done', anchor:'YYYY-MM-DD' }
+//  from 'due'  -> fixed schedule (anchor + k*interval, never drifts, skips dates already past)
+//  from 'done' -> next one is due `interval` after the day you complete it
+function _pad(n) { return String(n).padStart(2, '0'); }
+
+function addInterval(dateStr, n, unit) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (unit === 'day' || unit === 'week') {
+    const dt = new Date(y, m - 1, d + n * (unit === 'week' ? 7 : 1));
+    return `${dt.getFullYear()}-${_pad(dt.getMonth() + 1)}-${_pad(dt.getDate())}`;
+  }
+  const months = n * (unit === 'year' ? 12 : 1);
+  const total = (m - 1) + months;
+  const ty = y + Math.floor(total / 12);
+  const tm = ((total % 12) + 12) % 12;
+  const lastDay = new Date(ty, tm + 1, 0).getDate();   // clamp e.g. Jan 31 + 1 month -> Feb 28/29
+  return `${ty}-${_pad(tm + 1)}-${_pad(Math.min(d, lastDay))}`;
+}
+
+function nextDueDate(t) {
+  const r = t.repeat;
+  const today = todayStr();
+  if (r.from === 'done') return addInterval(today, r.every, r.unit);
+  const anchor = r.anchor || t.dueDate;
+  let k = 1, next;
+  do {
+    next = addInterval(anchor, r.every * k, r.unit);
+    k++;
+  } while ((next <= t.dueDate || next < today) && k < 5000);
+  return next;
+}
+
+// Completes a task; if it repeats (and hasn't already spawned its next copy),
+// creates the next occurrence in the same atomic batch (works offline too).
+function completeTask(t) {
+  const batch = firestoreDb.batch();
+  const ref = TASKS_COL.doc(t.id);
+  const spawn = !!(t.repeat && t.repeat.every && !t.nextSpawned);
+  const upd = { status: 'completed', completedAt: Date.now() };
+  if (spawn) upd.nextSpawned = true;
+  batch.update(ref, upd);
+  if (spawn) {
+    batch.set(TASKS_COL.doc(), {
+      tab: t.tab,
+      activityNo: nextActivityNo(t.tab),
+      title: t.title,
+      dueDate: nextDueDate(t),
+      dueTime: t.dueTime || null,
+      location: t.location || null,
+      createdBy: t.createdBy || null,
+      status: 'open',
+      createdAt: Date.now(),
+      completedAt: null,
+      repeat: t.repeat,
+      notes: []
+    });
+  }
+  return batch.commit();
 }
