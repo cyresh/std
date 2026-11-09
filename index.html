@@ -111,9 +111,17 @@
   /* Full-screen overlay shown any time the app has to wait on something
      (a lazy-loaded script, a slow network call) so there's never a silent
      freeze -- always a visible spinner instead. */
-  #signinOverlay{ position:fixed; inset:0; z-index:300; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px; text-align:center; }
+  #signinOverlay{ position:fixed; inset:0; z-index:300; background:radial-gradient(ellipse at 50% 38%, var(--surface-2) 0%, var(--bg) 70%); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px; text-align:center; overflow:hidden; }
+  #signinOverlay .si-art{ position:absolute; left:50%; top:50%; width:min(130vmax,1100px); height:min(130vmax,1100px); margin:calc(min(130vmax,1100px) / -2) 0 0 calc(min(130vmax,1100px) / -2); color:var(--accent); opacity:.16; pointer-events:none; -webkit-mask-image:radial-gradient(circle, transparent 0, transparent 14%, #000 42%); mask-image:radial-gradient(circle, transparent 0, transparent 14%, #000 42%); }
+  #signinOverlay .si-art g.spin{ transform-origin:0 0; animation:siSpin 140s linear infinite; }
+  #signinOverlay .si-art g.spin2{ transform-origin:0 0; animation:siSpin 220s linear infinite reverse; }
+  @keyframes siSpin{ to{ transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce){ #signinOverlay .si-art g{ animation:none !important; } }
+  #signinOverlay > *:not(.si-art){ position:relative; z-index:1; }
+  #signinOverlay .si-logo{ width:64px; height:64px; border-radius:16px; box-shadow:0 6px 24px rgba(59,130,246,.28); }
+  #signinOverlay .si-title{ font-size:1.5em; font-weight:800; letter-spacing:.3px; }
   #signinOverlay .g-msg{ color:var(--text-dim); font-size:.95em; max-width:300px; }
-  #signinOverlay .btn{ width:auto; padding:12px 28px; }
+  #signinOverlay .btn{ width:auto; padding:12px 28px; box-shadow:0 4px 16px rgba(59,130,246,.32); }
   #signinError{ color:var(--bad); font-size:.9em; min-height:1.2em; max-width:300px; }
   #globalLoadingOverlay{ position:fixed; inset:0; z-index:200; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px; text-align:center; animation:fade .15s ease; }
   #globalLoadingOverlay .g-msg{ color:var(--text-dim); font-size:.95em; max-width:280px; }
@@ -871,7 +879,12 @@
      any other on-demand load) so a slow connection shows a spinner, never a
      frozen screen. -->
 <div id="signinOverlay" class="hidden">
-  <div style="font-size:1.4em;font-weight:700;">Std</div>
+  <svg class="si-art" viewBox="-400 -400 800 800" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2">
+    <g class="spin"><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(0)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(30)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(60)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(90)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(120)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(150)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(180)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(210)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(240)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(270)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(300)"/><ellipse cx="0" cy="-150" rx="34" ry="150" transform="rotate(330)"/></g>
+    <g class="spin2"><ellipse cx="0" cy="-82" rx="20" ry="82" transform="rotate(15)"/><ellipse cx="0" cy="-82" rx="20" ry="82" transform="rotate(60)"/><ellipse cx="0" cy="-82" rx="20" ry="82" transform="rotate(105)"/><ellipse cx="0" cy="-82" rx="20" ry="82" transform="rotate(150)"/><ellipse cx="0" cy="-82" rx="20" ry="82" transform="rotate(195)"/><ellipse cx="0" cy="-82" rx="20" ry="82" transform="rotate(240)"/><ellipse cx="0" cy="-82" rx="20" ry="82" transform="rotate(285)"/><ellipse cx="0" cy="-82" rx="20" ry="82" transform="rotate(330)"/><circle r="190"/><circle r="260" stroke-dasharray="2 10"/><circle r="340"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(0)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(15)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(30)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(45)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(60)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(75)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(90)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(105)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(120)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(135)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(150)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(165)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(180)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(195)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(210)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(225)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(240)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(255)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(270)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(285)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(300)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(315)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(330)"/><circle cx="0" cy="-330" r="3.5" fill="currentColor" stroke="none" transform="rotate(345)"/></g>
+  </svg>
+  <img class="si-logo" src="icon-192.png" alt="" width="64" height="64">
+  <div class="si-title">Std</div>
   <div class="g-msg">Sign in with your Google account to continue.</div>
   <button class="btn" id="signinBtn">Sign in with Google</button>
   <div id="signinError"></div>
