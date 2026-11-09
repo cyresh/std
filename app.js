@@ -411,12 +411,15 @@ async function startLockFlow() {
 
   let sec;
   try {
-    await withTimeout(authReady, 10000);
+    await authReady;   // no timeout: the Google sign-in screen is shown meanwhile
     sec = await withTimeout(getSecurityDoc(), 10000);
   } catch (err) {
     lockSpinner.classList.add('hidden');
-    lockTitle.textContent = 'Connection error';
-    lockError.textContent = "Couldn't reach the server — check your internet connection.";
+    const denied = err && err.code === 'permission-denied';
+    lockTitle.textContent = denied ? 'Access denied' : 'Connection error';
+    lockError.textContent = denied
+      ? "This Google account isn't authorised for this app."
+      : "Couldn't reach the server — check your internet connection.";
     document.getElementById('lockRetryBtn').style.display = 'inline-block';
     return;
   }
