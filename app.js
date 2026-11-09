@@ -1834,9 +1834,32 @@ function refreshCurrentView() {
 
 let unsubscribeTasks = null;
 let unsubscribeSettings = null;
+const signinOverlay = document.getElementById('signinOverlay');
+const signinError = document.getElementById('signinError');
+document.getElementById('signinBtn').addEventListener('click', async () => {
+  signinError.textContent = '';
+  try {
+    await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  } catch (err) {
+    console.error('Google sign-in failed:', err);
+    signinError.textContent = err.code === 'auth/popup-blocked'
+      ? 'Popup was blocked — allow popups for this site and try again.'
+      : 'Sign-in failed (' + (err.code || 'unknown') + ').';
+  }
+});
+
 firebase.auth().onAuthStateChanged((user) => {
-  if (user) authReadyResolve();
-  if (user && !unsubscribeTasks) {
+  // Anonymous sessions from the old version are treated as signed out.
+  const signedIn = !!user && !user.isAnonymous;
+  if (!signedIn) {
+    signinOverlay.classList.remove('hidden');
+    if (unsubscribeTasks) { unsubscribeTasks(); unsubscribeTasks = null; }
+    if (unsubscribeSettings) { unsubscribeSettings(); unsubscribeSettings = null; }
+    return;
+  }
+  signinOverlay.classList.add('hidden');
+  authReadyResolve();
+  if (!unsubscribeTasks) {
     unsubscribeTasks = listenToTasks((tasks, metadata) => {
       allTasks = tasks;
       refreshCurrentView();

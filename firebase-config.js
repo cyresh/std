@@ -17,10 +17,4 @@ firestoreDb.enablePersistence({ synchronizeTabs: true }).catch((err) => {
   console.warn('Firestore offline persistence not enabled:', err.code);
 });
 
-// Anonymous auth so Firestore rules can require request.auth != null
-// without needing a real login screen.
-// Only sign in when there is no persisted session (first run / cleared storage);
-// returning devices restore their anonymous user locally with no network call.
-firebase.auth().onAuthStateChanged((u) => {
-  if (!u) firebase.auth().signInAnonymously().catch((err) => console.error('Anonymous auth failed:', err));
-});
+// Sign-in is handled in app.js (Google sign-in). No anonymous sessions anymore.

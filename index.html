@@ -111,6 +111,10 @@
   /* Full-screen overlay shown any time the app has to wait on something
      (a lazy-loaded script, a slow network call) so there's never a silent
      freeze -- always a visible spinner instead. */
+  #signinOverlay{ position:fixed; inset:0; z-index:300; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px; text-align:center; }
+  #signinOverlay .g-msg{ color:var(--text-dim); font-size:.95em; max-width:300px; }
+  #signinOverlay .btn{ width:auto; padding:12px 28px; }
+  #signinError{ color:var(--bad); font-size:.9em; min-height:1.2em; max-width:300px; }
   #globalLoadingOverlay{ position:fixed; inset:0; z-index:200; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px; text-align:center; animation:fade .15s ease; }
   #globalLoadingOverlay .g-msg{ color:var(--text-dim); font-size:.95em; max-width:280px; }
   #globalLoadingOverlay .btn{ width:auto; padding:10px 24px; }
@@ -779,6 +783,13 @@
 <!-- Global loading overlay: shown by ensureAstronomyLoaded() (and reusable for
      any other on-demand load) so a slow connection shows a spinner, never a
      frozen screen. -->
+<div id="signinOverlay" class="hidden">
+  <div style="font-size:1.4em;font-weight:700;">Std</div>
+  <div class="g-msg">Sign in with your Google account to continue.</div>
+  <button class="btn" id="signinBtn">Sign in with Google</button>
+  <div id="signinError"></div>
+</div>
+
 <div id="globalLoadingOverlay" class="hidden">
   <div class="spinner"></div>
   <div class="g-msg" id="globalLoadingMsg">Loading...</div>
