@@ -330,7 +330,77 @@ function enterMainLockout(until) {
 
 const lockSpinner = document.getElementById('lockSpinner');
 
+// ---- Local-first unlock: the lock decision is made from local state in the same
+// tick the page loads (no network wait). The PIN hash is cached locally; the
+// server copy is re-checked in the background and, if the shared PIN was changed
+// on another device, this device is re-locked immediately. ----
+const PIN_CACHE_KEY = 'std_pin_hash_cache';
+const UNLOCK_HASH_KEY = 'std_unlocked_hash';
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
+let authReadyResolve;
+const authReady = new Promise((res) => { authReadyResolve = res; });
+
+function markUnlocked(hash) {
+  globalPinHash = hash;
+  localStorage.setItem(PIN_CACHE_KEY, hash);
+  localStorage.setItem(UNLOCK_HASH_KEY, hash);
+  localStorage.setItem('std_last_unlock_date', todayStr());
+  registerPinSuccess();
+  lockscreen.classList.add('hidden');
+}
+
+function showVerifyScreen() {
+  lockSpinner.classList.add('hidden');
+  document.getElementById('lockRetryBtn').style.display = 'none';
+  lockscreen.classList.remove('hidden');
+  const lockUntil = activeLockUntil();
+  if (lockUntil) { enterMainLockout(lockUntil); return; }
+  lockMode = 'verify';
+  lockTitle.textContent = 'Enter PIN';
+  resetPinEntry();
+}
+
+async function refreshPinInBackground() {
+  try {
+    await authReady;
+    const sec = await withTimeout(getSecurityDoc(), 15000);
+    const serverHash = sec && sec.pinHash ? sec.pinHash : null;
+    if (!serverHash) {                       // PIN doc removed -> back to setup
+      localStorage.removeItem(PIN_CACHE_KEY);
+      localStorage.removeItem(UNLOCK_HASH_KEY);
+      localStorage.removeItem('std_last_unlock_date');
+      globalPinHash = null;
+      startLockFlow();
+      return;
+    }
+    if (serverHash !== localStorage.getItem(PIN_CACHE_KEY)) {
+      localStorage.setItem(PIN_CACHE_KEY, serverHash);
+      globalPinHash = serverHash;
+    }
+    // PIN changed elsewhere since this device unlocked -> lock again right away.
+    if (localStorage.getItem(UNLOCK_HASH_KEY) !== serverHash) {
+      localStorage.removeItem('std_last_unlock_date');
+      localStorage.removeItem(UNLOCK_HASH_KEY);
+      showVerifyScreen();
+    }
+  } catch (err) { /* offline: keep working from cache, re-check next launch */ }
+}
+
 async function startLockFlow() {
+  const cachedHash = localStorage.getItem(PIN_CACHE_KEY);
+
+  if (cachedHash) {
+    globalPinHash = cachedHash;
+    const unlockedToday = localStorage.getItem('std_last_unlock_date') === todayStr()
+      && localStorage.getItem(UNLOCK_HASH_KEY) === cachedHash;
+    if (unlockedToday) lockscreen.classList.add('hidden');   // instant, no network
+    else showVerifyScreen();                                  // instant keypad, no network
+    refreshPinInBackground();
+    return;
+  }
+
+  // First run on this device (nothing cached): the only path that needs the network.
   lockMode = 'loading';
   lockTitle.textContent = 'Loading...';
   lockSpinner.classList.remove('hidden');
@@ -339,10 +409,9 @@ async function startLockFlow() {
   resetPinEntry();
   lockscreen.classList.remove('hidden');
 
-  const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
-
   let sec;
   try {
+    await withTimeout(authReady, 10000);
     sec = await withTimeout(getSecurityDoc(), 10000);
   } catch (err) {
     lockSpinner.classList.add('hidden');
@@ -353,7 +422,6 @@ async function startLockFlow() {
   }
   lockSpinner.classList.add('hidden');
   globalPinHash = sec ? sec.pinHash : null;
-  const lastUnlock = localStorage.getItem('std_last_unlock_date');
 
   if (!globalPinHash) {
     lockMode = 'setup1';
@@ -361,16 +429,8 @@ async function startLockFlow() {
     resetPinEntry();
     return;
   }
-  if (lastUnlock === todayStr()) {
-    lockscreen.classList.add('hidden');
-    return;
-  }
-  const lockUntil = activeLockUntil();
-  if (lockUntil) { enterMainLockout(lockUntil); return; }
-
-  lockMode = 'verify';
-  lockTitle.textContent = 'Enter PIN';
-  resetPinEntry();
+  localStorage.setItem(PIN_CACHE_KEY, globalPinHash);
+  showVerifyScreen();
 }
 document.getElementById('lockRetryBtn').addEventListener('click', () => startLockFlow());
 
@@ -407,10 +467,7 @@ async function handlePinComplete() {
       const hash = simpleHash(enteredDigits);
       try {
         await setGlobalPinHash(hash);
-        globalPinHash = hash;
-        registerPinSuccess();
-        localStorage.setItem('std_last_unlock_date', todayStr());
-        lockscreen.classList.add('hidden');
+        markUnlocked(hash);
       } catch (err) {
         lockError.textContent = 'Could not save PIN — check connection.';
         shakeDots(pinDots);
@@ -426,9 +483,7 @@ async function handlePinComplete() {
     return;
   }
   if (simpleHash(enteredDigits) === globalPinHash) {
-    registerPinSuccess();
-    localStorage.setItem('std_last_unlock_date', todayStr());
-    lockscreen.classList.add('hidden');
+    markUnlocked(globalPinHash);
   } else {
     const until = registerPinFailure();
     if (until) {
@@ -531,6 +586,8 @@ async function handleChangeKey(k) {
     try {
       await setGlobalPinHash(hash);
       globalPinHash = hash;
+      localStorage.setItem(PIN_CACHE_KEY, hash);
+      localStorage.setItem(UNLOCK_HASH_KEY, hash);
       changePinModal.classList.add('hidden');
     } catch (err) {
       changePinError.textContent = 'Could not save — check connection.';
@@ -1778,6 +1835,7 @@ function refreshCurrentView() {
 let unsubscribeTasks = null;
 let unsubscribeSettings = null;
 firebase.auth().onAuthStateChanged((user) => {
+  if (user) authReadyResolve();
   if (user && !unsubscribeTasks) {
     unsubscribeTasks = listenToTasks((tasks, metadata) => {
       allTasks = tasks;
@@ -1793,7 +1851,6 @@ firebase.auth().onAuthStateChanged((user) => {
       applyTabLabelsToUI();
       if (currentTab === 'settings') populateSettingsFields();
     });
-    startLockFlow();
   }
 });
 
@@ -1820,5 +1877,5 @@ window.addEventListener('appinstalled', () => {
 initTheme();
 initNotifToggle();
 initAboutVersion();
-lockscreen.classList.remove('hidden');
+startLockFlow();
 goToView('home');

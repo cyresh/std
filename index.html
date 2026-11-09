@@ -9,6 +9,9 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#0b1220">
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js">
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
 <style>
@@ -789,5 +792,10 @@
 <script src="firebase-config.js" defer></script>
 <script src="db.js" defer></script>
 <script src="app.js" defer></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
 </body>
 </html>
