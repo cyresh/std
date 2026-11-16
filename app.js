@@ -701,8 +701,8 @@ document.addEventListener('keydown', (e) => {
 const viewTitleEl = document.getElementById('viewTitle');
 const appEl = document.getElementById('app');
 const backBtn = document.getElementById('backBtn');
-const SUB_VIEWS = ['taskDetail', 'settings', 'calendar', 'search', 'creatorsEditor', 'notifications', 'tabNamesEditor', 'helpDetail', 'aboutDetail'];
-const FIXED_LABELS = { home: 'Std', settings: 'Settings', calendar: 'Calendar', search: 'Search', creatorsEditor: 'Task creators', notifications: 'Notifications', tabNamesEditor: 'Tab names', helpDetail: 'Help', aboutDetail: 'About' };
+const SUB_VIEWS = ['dataHome', 'dataList', 'taskDetail', 'settings', 'calendar', 'search', 'creatorsEditor', 'notifications', 'tabNamesEditor', 'helpDetail', 'aboutDetail'];
+const FIXED_LABELS = { dataHome: 'Data', dataList: 'Data', home: 'Std', settings: 'Settings', calendar: 'Calendar', search: 'Search', creatorsEditor: 'Task creators', notifications: 'Notifications', tabNamesEditor: 'Tab names', helpDetail: 'Help', aboutDetail: 'About' };
 
 function labelFor(name) {
   if (['simple', 'medium', 'heavy'].includes(name)) return tabLabels[name] || capitalize(name);
@@ -738,6 +738,8 @@ function goToView(name, opts = {}) {
   if (name === 'tabNamesEditor') populateSettingsFields();
   if (name === 'aboutDetail') renderAboutDetail();
   if (name === 'search') { document.getElementById('searchInput').focus(); updateSearchFilterChipStyles(); }
+
+  if (typeof vaultOnView === 'function') vaultOnView(name);
 
   if (!opts.fromHistory) pushNavHistory(name);
 }
@@ -1081,6 +1083,7 @@ function renderCreatorChips(container, selected, onSelect) {
 const CHANGELOG = [
   {
     version: '1.5.0', date: 'Nov 2026', notes: [
+      'Data: a private, end-to-end encrypted vault (Settings \u2192 Data) for IDs, birthdays, school numbers and more',
       'Archive: park tasks that can\'t be done yet without closing them — archive icon on each task, Archived group at the bottom of each tab, restore any time',
       'Repeating tasks: daily, weekly, monthly, yearly or custom intervals, on a fixed schedule or counted from when you complete it',
       'Google sign-in, faster loading with offline caching'
@@ -1349,6 +1352,7 @@ function renderHome() {
   overdueList.querySelectorAll('[data-task-id]').forEach(el => el.addEventListener('click', () => openTaskDetail(el.dataset.taskId)));
 
   renderHomeUpcoming(open.filter(t => !isOverdue(t)));
+  if (typeof renderVaultHomeCard === 'function') renderVaultHomeCard();
 }
 
 const UPCOMING_GROUP_LABELS = {

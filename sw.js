@@ -1,8 +1,8 @@
 // Std service worker — app-shell caching so repeat launches don't wait on the network.
 // Bump CACHE_VERSION whenever you deploy changes to any cached file.
-const CACHE_VERSION = 'std-v5';
+const CACHE_VERSION = 'std-v6';
 const SHELL = [
-  './', './index.html', './app.js', './db.js', './firebase-config.js',
+  './', './index.html', './app.js', './db.js', './vault.js', './firebase-config.js',
   './manifest.json', './icon-192.png', './icon-512.png', './logo.svg'
 ];
 const FIREBASE_SDK = /^https:\/\/www\.gstatic\.com\/firebasejs\/10\.12\.2\//;

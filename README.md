@@ -9,6 +9,7 @@ A simple cloud-synced to-do app with three workload tabs (Simple / Medium / Heav
 - Tasks with activity numbers, due date/time, location, created-by, and a timestamped notes/progress log
 - **Archive** — park tasks that can't be done yet without closing them. Archive icon on each open task and on the task screen; archived tasks sit in a collapsed *Archived* group at the bottom of each tab, are excluded from overdue/reminders/progress, and can be restored any time (also searchable via the *Archived* filter)
 - **Repeating tasks** — Daily, Weekly, Every 2 weeks, Monthly, Every 3 months, Every 6 months, Yearly or Custom. Choose *fixed schedule* (from due date) or *after I complete it* (from completion date). Completing a repeating task creates the next copy automatically; archiving pauses the series
+- **Data vault** (Settings → Data) — a private, end-to-end encrypted place for things you reuse: birthdays, PAN, Aadhaar, school IDs, policy and vehicle numbers and more. Organised by category and filterable by person; tap a value to copy it, hide values behind an eye icon, share as text, pin favourites, and get "dates to remember" (birthdays, expiries) on Home while the vault is unlocked
 - Google sign-in, shared 6-digit PIN (asked once per day per device), dark/light theme
 - Installable PWA with offline caching
 
@@ -16,6 +17,7 @@ A simple cloud-synced to-do app with three workload tabs (Simple / Medium / Heav
 - `index.html` — structure + all styling
 - `app.js` — app logic (UI, sign-in, PIN lock, rendering)
 - `db.js` — Firestore data layer (tasks, archive, recurrence, PIN, settings)
+- `vault.js` — the encrypted Data vault (crypto, sync, screens)
 - `firebase-config.js` — Firebase project config (public web config; access is controlled by the rules below)
 - `sw.js` — service worker (app-shell + Firebase SDK caching)
 - `astronomy.min.js` — Tamil calendar data, loaded only when the Calendar tab is opened
@@ -60,7 +62,7 @@ In Google Cloud Console → **APIs & Services → Credentials**, open the browse
 2. **Settings → Pages** → Source: **Deploy from a branch** → `main`, folder `/ (root)`.
 3. The app is served at https://cyresh.github.io/std/ within a minute or two.
 
-**Every time you deploy changes:** bump `CACHE_VERSION` in `sw.js` (e.g. `std-v4` → `std-v5`) so installed devices pick up the new files. Reload the app twice after deploying.
+**Every time you deploy changes:** bump `CACHE_VERSION` in `sw.js` (e.g. `std-v6` → `std-v7`) so installed devices pick up the new files. Reload the app twice after deploying.
 
 ## How loading stays fast
 - `sw.js` caches the app files and the pinned Firebase SDK, so repeat launches don't wait on the network.
@@ -72,9 +74,19 @@ In Google Cloud Console → **APIs & Services → Credentials**, open the browse
 - The PIN is shared across devices and stored as a hash in Firestore (`meta/security`). Change it from Settings → Change PIN.
 - It is a convenience screen lock, not an encrypted vault. The real protection is your Google account (turn on 2-step verification) plus the Firestore rules above.
 
+## Data vault security
+- Everything saved in Data (values, labels, categories, people, notes) is encrypted in the browser with AES-256-GCM **before** it is sent to Firestore. The database only holds ciphertext.
+- A random data key encrypts the records. That key is stored wrapped twice: once by a key derived from your **passphrase** (PBKDF2-SHA256, 600,000 iterations) and once by a one-time **recovery code**. Changing the passphrase only re-wraps the key.
+- Lose both the passphrase and the recovery code and the data cannot be recovered by anyone; *Erase all Data* lets you start fresh.
+- The vault is unlocked per session and re-locks after 5 minutes in the background. *Keep unlocked on this device* stores a non-extractable key in the browser for convenience (turn it off with Lock now).
+- Don't store card numbers with CVV, passwords or OTPs here.
+
 ## Data layout
 - `tasks` — `{ tab, activityNo, title, dueDate, dueTime, location, createdBy, status: open|completed|archived, createdAt, completedAt, archivedAt, repeat: { every, unit, from, anchor } | null, nextSpawned, notes[] }`
 - `meta/security` — `{ pinHash }`
+- `meta/vault` — `{ wrapped, rwrapped }` (the data key wrapped by passphrase / recovery code; no plaintext)
+- `meta/vaultConfig` — `{ enc }` (encrypted categories and people)
+- `vault/{id}` — `{ enc, updatedAt }` (one encrypted record each)
 - `meta/appSettings` — `{ createdByNames[], tabLabels{} }`
 
 ## Known limits
