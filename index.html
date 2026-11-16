@@ -153,6 +153,25 @@
   .vhero .field{ text-align:left; }
   .vhero-ico{ width:54px; height:54px; border-radius:16px; margin:0 auto 6px; display:flex; align-items:center; justify-content:center; background:var(--surface-2); color:var(--accent); }
   .vhero-ico svg{ width:28px; height:28px; }
+  .vfld{ border:1px solid var(--border); border-radius:12px; padding:10px; margin-bottom:8px; background:var(--surface); }
+  .vfld .field-row{ margin-bottom:8px; } .vfld .field{ margin-bottom:0; }
+  .vfld .icon-btn{ flex-shrink:0; font-size:1.4em; }
+  .vfld-opts{ margin-top:8px; display:flex; flex-direction:column; gap:4px; }
+  .vquick{ display:flex; gap:6px; overflow-x:auto; padding:8px 0 2px; scrollbar-width:none; }
+  .vquick::-webkit-scrollbar{ display:none; }
+  .vquick .chip{ padding:6px 12px; font-size:.82em; white-space:nowrap; flex-shrink:0; }
+  .vfields{ margin-top:6px; }
+  .vfield{ display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer; }
+  .vfield:first-child{ border-top:none; }
+  .vfield .k{ flex:0 0 34%; font-size:.78em; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:var(--text-dim); }
+  .vfield .m{ flex:1; min-width:0; }
+  .vfield .v{ font-weight:600; word-break:break-all; }
+  .vfield .v.masked{ color:var(--text-dim); letter-spacing:1.5px; }
+  .vfield .s{ font-size:.78em; color:var(--text-dim); margin-top:1px; }
+  .vfield .vbtn{ flex-shrink:0; }
+  .vchoose{ background:var(--surface-2); border:1px solid var(--border); border-radius:14px; padding:14px 16px; margin-bottom:10px; cursor:pointer; }
+  .vchoose:active{ background:var(--border); }
+  .vchoose .n{ font-weight:700; } .vchoose .s{ font-size:.82em; color:var(--text-dim); margin-top:3px; }
   .vlist-title{ font-size:1.25em; font-weight:800; margin:2px 2px 12px; }
   .btn:disabled{ opacity:.4; cursor:not-allowed; }
   .vcode span{ display:inline-block; }

@@ -1082,6 +1082,13 @@ function renderCreatorChips(container, selected, onSelect) {
 // ================= Settings =================
 const CHANGELOG = [
   {
+    version: '1.6.0', date: 'Nov 2026', notes: [
+      'Data: entries with several fields (phone with IMEIs and warranty, court case with hearing date, vehicle, policy) alongside single values',
+      'Data: filter chips now form automatically from the labels you use most; link any item to a person, device or case',
+      'Data: dates can show exact age/time as 46y, 5m, 18d, and deadlines appear under Dates to remember on Home'
+    ]
+  },
+  {
     version: '1.5.0', date: 'Nov 2026', notes: [
       'Data: a private, end-to-end encrypted vault (Settings \u2192 Data) for IDs, birthdays, school numbers and more',
       'Archive: park tasks that can\'t be done yet without closing them — archive icon on each task, Archived group at the bottom of each tab, restore any time',

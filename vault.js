@@ -83,14 +83,23 @@ function vDaysBetween(a, b) {                           // whole days from a to 
   const A = vYMD(a), B = vYMD(b);
   return Math.round((Date.UTC(B.y, B.m - 1, B.d) - Date.UTC(A.y, A.m - 1, A.d)) / 86400000);
 }
-function vAgeText(dob, today) {
-  const b = vYMD(dob), t = vYMD(today);
-  let y = t.y - b.y, m = t.m - b.m;
-  if (t.d < b.d) m--;
-  if (m < 0) { y--; m += 12; }
-  if (y < 0) return '';
-  if (y === 0) return m === 0 ? 'newborn' : m + ' mo';
-  return y + (y > 1 ? ' yrs' : ' yr') + (m ? ' ' + m + ' mo' : '');
+function vAddMonths(dateStr, n) {
+  const { y, m, d } = vYMD(dateStr);
+  const total = (m - 1) + n, ty = y + Math.floor(total / 12), tm = ((total % 12) + 12) % 12;
+  const last = new Date(ty, tm + 1, 0).getDate();               // clamp e.g. 31 Jan + 1 month -> 28/29 Feb
+  return `${ty}-${vPad(tm + 1)}-${vPad(Math.min(d, last))}`;
+}
+function vAgeParts(from, to) {                                   // exact years / months / days from -> to
+  if (!from || !to || to < from) return null;
+  const a = vYMD(from), b = vYMD(to);
+  let months = (b.y - a.y) * 12 + (b.m - a.m);
+  let anchor = vAddMonths(from, months);
+  if (anchor > to) { months--; anchor = vAddMonths(from, months); }
+  return { y: Math.floor(months / 12), m: months % 12, d: vDaysBetween(anchor, to) };
+}
+function vAgeText(from, to) {                                    // "46y, 5m, 18d"
+  const p = vAgeParts(from, to);
+  return p ? `${p.y}y, ${p.m}m, ${p.d}d` : '';
 }
 function vNextBirthday(dob, today) {
   const b = vYMD(dob), t = vYMD(today);
@@ -129,17 +138,16 @@ function vCopyValue(r) {
   return r.value;
 }
 
-function vUpcoming(records, today, personName, windowDays) {
+function vUpcoming(items, today, windowDays) {            // items: {id,label,type,value,kind,who}
   const out = [];
-  for (const r of records) {
+  for (const r of items) {
     if (r.type !== 'date' || !r.value) continue;
-    const who = personName(r.person);
     if (r.kind === 'birthday') {
       const nb = vNextBirthday(r.value, today);
-      if (nb.days <= windowDays) out.push({ id: r.id, days: nb.days, title: (who || r.label) + ' turns ' + nb.turns, icon: '\uD83C\uDF82' });
+      if (nb.days <= windowDays) out.push({ id: r.id, days: nb.days, title: (r.who || r.label) + ' turns ' + nb.turns, icon: '\uD83C\uDF82' });
     } else if (r.kind === 'expiry') {
       const d = vDaysBetween(today, r.value);
-      if (d <= windowDays && d >= -30) out.push({ id: r.id, days: d, title: r.label + (who ? ' \u00B7 ' + who : ''), icon: '\u23F3' });
+      if (d <= windowDays && d >= -30) out.push({ id: r.id, days: d, title: r.label + (r.who ? ' \u00B7 ' + r.who : ''), icon: '\u23F3' });
     }
   }
   return out.sort((a, b) => a.days - b.days);
@@ -161,7 +169,9 @@ const V_TEMPLATES = [
   { emoji: '\uD83D\uDEE1\uFE0F', name: 'Insurance policies', defType: 'text', defLabel: 'Policy no.' },
   { emoji: '\uD83D\uDE97', name: 'Vehicles', defType: 'text', defLabel: 'Registration no.' },
   { emoji: '\uD83D\uDEC2', name: 'Passport & licence', defType: 'text', defLabel: 'Passport no.' },
-  { emoji: '\uD83D\uDCDE', name: 'Important contacts', defType: 'phone', defLabel: 'Phone' }
+  { emoji: '\uD83D\uDCDE', name: 'Important contacts', defType: 'phone', defLabel: 'Phone' },
+  { emoji: '\uD83D\uDCF1', name: 'Phones & devices', defType: 'number', defLabel: 'IMEI' },
+  { emoji: '\u2696\uFE0F', name: 'Court cases', defType: 'text', defLabel: 'Case number' }
 ];
 const V_EMOJIS = ['\uD83D\uDCC1', '\uD83C\uDF82', '\uD83E\uDEAA', '\uD83C\uDD94', '\uD83C\uDF93', '\uD83D\uDEE1\uFE0F', '\uD83D\uDE97', '\uD83C\uDFE0', '\uD83C\uDFE5', '\uD83D\uDCBC', '\uD83D\uDCDE', '\u2B50'];
 
@@ -174,7 +184,7 @@ function vDefaultCfg() {
 const V = {
   meta: undefined,        // undefined = loading, null = vault not created yet
   metaError: false, key: null, cfg: vDefaultCfg(), records: [], seq: 0,
-  unsubRecs: null, unsubCfg: null, person: 'all', cat: null, q: '', revealed: new Set(),
+  unsubRecs: null, unsubCfg: null, group: 'all', usage: {}, flushT: null, cat: null, q: '', revealed: new Set(),
   hiddenAt: 0, remember: false, fails: 0, lockedUntil: 0, pending: null, uiState: '', editing: null
 };
 const $v = (id) => document.getElementById(id);
@@ -182,6 +192,45 @@ const vEsc = (s) => escapeHtml(String(s == null ? '' : s));
 const vId = (p) => p + Math.random().toString(36).slice(2, 9);
 const vCat = (id) => V.cfg.cats.find(c => c.id === id);
 const vPersonName = (id) => { const p = V.cfg.people.find(p => p.id === id); return p ? p.name : ''; };
+
+
+// ---- "Linked to" labels (replace the old fixed People list) ----
+const vGroupOf = (r) => (r.group != null && r.group !== '') ? String(r.group) : (r.person ? vPersonName(r.person) : '');
+const vGroupKey = (s) => String(s || '').trim().toLowerCase();
+function vGroups() {                                   // auto-formed, most used first
+  const map = new Map();
+  V.records.forEach(r => {
+    const g = vGroupOf(r).trim(); if (!g) return;
+    const k = vGroupKey(g); const e = map.get(k) || { key: k, name: g, count: 0, score: 0 };
+    e.count++; e.score += (r.uses || 0) + (V.usage[r.id] ? V.usage[r.id].n : 0) + 0.1; map.set(k, e);
+  });
+  return Array.from(map.values()).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+}
+const vGroupName = (key) => { const g = vGroups().find(x => x.key === key); return g ? g.name : ''; };
+const vInGroup = (r) => V.group === 'all' || vGroupKey(vGroupOf(r)) === V.group;
+function vAtoms() {                                    // flatten entries into date-bearing atoms
+  const out = [];
+  V.records.forEach(r => {
+    if (r.mode === 'entry') (r.fields || []).forEach(f => out.push({ id: r.id + ':' + f.id, label: f.label, type: f.type, value: f.value, kind: f.kind, who: r.label }));
+    else out.push({ id: r.id, label: r.label, type: r.type, value: r.value, kind: r.kind, who: vGroupOf(r) });
+  });
+  return out;
+}
+// ---- usage tracking (feeds the auto chips); flushed in batches, encrypted with the record ----
+function vBump(id, n) {
+  if (!V.key) return;
+  (V.usage[id] = V.usage[id] || { n: 0 }).n += n;
+  clearTimeout(V.flushT); V.flushT = setTimeout(vFlushUsage, 15000);
+}
+function vFlushUsage() {
+  clearTimeout(V.flushT);
+  const pending = V.usage; V.usage = {};
+  if (!V.key) return;
+  Object.keys(pending).forEach(id => {
+    const r = V.records.find(x => x.id === id); if (!r) return;
+    vSaveRecord(Object.assign({}, r, { uses: (r.uses || 0) + pending[id].n, last: Date.now() }), id);
+  });
+}
 
 const ICON = {
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -273,6 +322,7 @@ function vStopSession() {
   if (V.unsubCfg) { V.unsubCfg(); V.unsubCfg = null; }
 }
 function vLock(silent) {
+  vFlushUsage();
   vStopSession(); V.seq++;
   V.key = null; V.records = []; V.revealed.clear(); V.remember = false; V.q = '';
   vKeyDel();
@@ -282,7 +332,7 @@ function vLock(silent) {
   if (!silent) vToast('Locked');
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) V.hiddenAt = Date.now();
+  if (document.hidden) { V.hiddenAt = Date.now(); vFlushUsage(); }
   else if (V.key && !V.remember && V.hiddenAt && Date.now() - V.hiddenAt > 5 * 60 * 1000) vLock();
 });
 
@@ -319,7 +369,7 @@ function vRenderAll() {
 }
 function renderVaultHomeCard() {
   const card = $v('homeVaultCard'); if (!card) return;
-  const items = V.key ? vUpcoming(V.records, todayStr(), vPersonName, 30) : [];
+  const items = V.key ? vUpcoming(vAtoms(), todayStr(), 30) : [];
   card.classList.toggle('hidden', !items.length);
   if (!items.length) return;
   $v('homeVaultList').innerHTML = items.slice(0, 6).map(i => `
@@ -416,26 +466,32 @@ function vDownload(name, text) {
 }
 
 function vChipsHtml() {
-  const chips = [`<button type="button" class="chip ${V.person === 'all' ? 'selected' : ''}" data-vperson="all">All</button>`]
-    .concat(V.cfg.people.map(p => `<button type="button" class="chip ${V.person === p.id ? 'selected' : ''}" data-vperson="${p.id}">${vEsc(p.name)}</button>`));
-  chips.push('<button type="button" class="chip" data-vact="people">+ Person</button>');
-  return chips.join('');
+  const groups = vGroups(); if (!groups.length) return '';
+  const top = groups.slice(0, 6);
+  if (V.group !== 'all' && !top.some(g => g.key === V.group)) { const sel = groups.find(g => g.key === V.group); if (sel) top.push(sel); }
+  let html = `<button type="button" class="chip ${V.group === 'all' ? 'selected' : ''}" data-vgroup="all">All</button>` +
+    top.map(g => `<button type="button" class="chip ${V.group === g.key ? 'selected' : ''}" data-vgroup="${vEsc(g.key)}">${vEsc(g.name)}</button>`).join('');
+  if (groups.length > top.length) html += '<button type="button" class="chip" data-vact="moregroups">More\u2026</button>';
+  return html;
 }
 function vSortRecs(list) {
-  const order = (id) => { const i = V.cfg.people.findIndex(p => p.id === id); return i < 0 ? 999 : i; };
-  return list.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || order(a.person) - order(b.person) || String(a.label).localeCompare(String(b.label)));
+  const use = (r) => (r.uses || 0) + (V.usage[r.id] ? V.usage[r.id].n : 0);
+  return list.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || use(b) - use(a) || String(a.label).localeCompare(String(b.label)));
 }
-function vSubText(r) {
+function vSubText(f) {                                  // f: a single item or an entry field
   const parts = [];
-  if (r.type === 'date' && r.value) {
+  if (f.type === 'date' && f.value) {
     const t = todayStr();
-    if (r.kind === 'birthday') {
-      const nb = vNextBirthday(r.value, t); const age = vAgeText(r.value, t);
-      if (age) parts.push(age);
+    if (f.kind === 'birthday') {
+      const age = vAgeText(f.value, t); if (age) parts.push(age);
+      const nb = vNextBirthday(f.value, t);
       if (nb.days <= 60) parts.push('turns ' + nb.turns + ' ' + vDaysLabel(nb.days).toLowerCase());
-    } else if (r.kind === 'expiry') parts.push(vDaysLabel(vDaysBetween(t, r.value)));
+    } else {
+      if (f.showAge) parts.push(f.value <= t ? vAgeText(f.value, t) : 'in ' + vAgeText(t, f.value));
+      if (f.kind === 'expiry') parts.push(vDaysLabel(vDaysBetween(t, f.value)));
+    }
   }
-  if (r.note) parts.push(r.note.length > 70 ? r.note.slice(0, 70) + '\u2026' : r.note);
+  if (f.note) parts.push(f.note.length > 70 ? f.note.slice(0, 70) + '\u2026' : f.note);
   return parts.join(' \u00B7 ');
 }
 function vDisplay(r) {
@@ -443,37 +499,46 @@ function vDisplay(r) {
   if (r.type === 'aadhaar') return String(r.value).replace(/(\d{4})(?=\d)/g, '$1 ');
   return r.value;
 }
+function vShareText(r) {
+  const g = vGroupOf(r);
+  if (r.mode === 'entry') return r.label + (g ? ' (' + g + ')' : '') + '\n' + (r.fields || []).map(f => f.label + ': ' + vCopyValue(f)).join('\n');
+  return (g ? g + ' \u2013 ' : '') + r.label + ': ' + vCopyValue(r);
+}
 function vCardHtml(r, showCat) {
-  const masked = r.mask && !V.revealed.has(r.id);
-  const person = vPersonName(r.person), c = vCat(r.cat), sub = vSubText(r);
+  const g = vGroupOf(r), c = vCat(r.cat);
+  const head = `<div class="vrec-top"><span class="vrec-label">${vEsc(r.label)}</span>${g ? `<span class="vrec-person">${vEsc(g)}</span>` : ''}${showCat && c ? `<span class="vrec-cat">${vEsc(c.emoji)} ${vEsc(c.name)}</span>` : ''}${r.pin ? '<span class="vrec-pin">\u2605</span>' : ''}</div>`;
+  const actions = (reveal) => `<div class="vrec-actions">${reveal}<button class="vbtn" data-vact="share" title="Share">${ICON.share}</button><button class="vbtn ${r.pin ? 'on' : ''}" data-vact="pin" title="Pin to top">${ICON.star}</button><button class="vbtn" data-vact="edit" title="Edit">${ICON.pen}</button></div>`;
+  if (r.mode === 'entry') {
+    const rows = (r.fields || []).map(f => {
+      const masked = f.mask && !V.revealed.has(r.id + ':' + f.id), sub = vSubText(f);
+      return `<div class="vfield" data-vfid="${f.id}" data-vact="copyfield"><div class="k">${vEsc(f.label)}</div><div class="m"><div class="v ${masked ? 'masked' : ''}">${vEsc(masked ? vMask(f) : vDisplay(f))}</div>${sub ? `<div class="s">${vEsc(sub)}</div>` : ''}</div>${f.mask ? `<button class="vbtn" data-vact="revealfield" title="Show / hide">${ICON.eye}</button>` : ''}</div>`;
+    }).join('');
+    const note = r.note ? `<div class="vrec-sub" style="margin-top:6px;">${vEsc(r.note.length > 90 ? r.note.slice(0, 90) + '\u2026' : r.note)}</div>` : '';
+    return `<div class="vrec vent" data-vid="${r.id}">${head}<div class="vfields">${rows}</div>${note}${actions('')}</div>`;
+  }
+  const masked = r.mask && !V.revealed.has(r.id), sub = vSubText(r);
   return `<div class="vrec" data-vid="${r.id}">
-    <div class="vrec-main" data-vact="copy">
-      <div class="vrec-top"><span class="vrec-label">${vEsc(r.label)}</span>${person ? `<span class="vrec-person">${vEsc(person)}</span>` : ''}${showCat && c ? `<span class="vrec-cat">${vEsc(c.emoji)} ${vEsc(c.name)}</span>` : ''}${r.pin ? '<span class="vrec-pin">\u2605</span>' : ''}</div>
+    <div class="vrec-main" data-vact="copy">${head}
       <div class="vrec-val ${masked ? 'masked' : ''}">${vEsc(masked ? vMask(r) : vDisplay(r))}</div>
       ${sub ? `<div class="vrec-sub">${vEsc(sub)}</div>` : ''}
-    </div>
-    <div class="vrec-actions">
-      ${r.mask ? `<button class="vbtn" data-vact="reveal" title="Show / hide">${ICON.eye}</button>` : ''}
-      <button class="vbtn" data-vact="share" title="Share">${ICON.share}</button>
-      <button class="vbtn ${r.pin ? 'on' : ''}" data-vact="pin" title="Pin to top">${ICON.star}</button>
-      <button class="vbtn" data-vact="edit" title="Edit">${ICON.pen}</button>
-    </div>
+    </div>${actions(r.mask ? `<button class="vbtn" data-vact="reveal" title="Show / hide">${ICON.eye}</button>` : '')}
   </div>`;
 }
 function vHomeContent() {
   const q = V.q.trim().toLowerCase();
   if (q) {
     const hits = vSortRecs(V.records.filter(r => {
-      if (V.person !== 'all' && r.person !== V.person) return false;
+      if (!vInGroup(r)) return false;
       const c = vCat(r.cat);
-      return [r.label, r.value, r.note, vPersonName(r.person), c && c.name].some(x => String(x || '').toLowerCase().includes(q));
+      const hay = [r.label, r.note, vGroupOf(r), c && c.name].concat(r.mode === 'entry' ? (r.fields || []).flatMap(f => [f.label, f.value]) : [r.value]);
+      return hay.some(x => String(x || '').toLowerCase().includes(q));
     }));
     return hits.length ? `<div class="group-header" style="cursor:default;">${hits.length} result${hits.length > 1 ? 's' : ''}</div>` + hits.map(r => vCardHtml(r, true)).join('')
       : '<div class="empty-state">Nothing matches \u201C' + vEsc(V.q) + '\u201D</div>';
   }
-  if (V.person !== 'all') {
-    const mine = V.records.filter(r => r.person === V.person);
-    if (!mine.length) return `<div class="empty-state">Nothing saved for ${vEsc(vPersonName(V.person))} yet.<br>Tap + to add something.</div>`;
+  if (V.group !== 'all') {
+    const mine = V.records.filter(vInGroup);
+    if (!mine.length) return `<div class="empty-state">Nothing linked to ${vEsc(vGroupName(V.group) || 'this label')} yet.</div>`;
     const cats = V.cfg.cats.concat([{ id: '__other', name: 'Other', emoji: '\uD83D\uDCC1' }]);
     return cats.map(c => {
       const list = vSortRecs(mine.filter(r => (vCat(r.cat) ? r.cat : '__other') === c.id));
@@ -494,7 +559,7 @@ function vHomeContent() {
 function renderDataList() {
   const body = $v('dataListBody'), c = vCat(V.cat);
   if (!V.key || !c) { body.innerHTML = ''; return; }
-  const list = vSortRecs(V.records.filter(r => r.cat === c.id && (V.person === 'all' || r.person === V.person)));
+  const list = vSortRecs(V.records.filter(r => r.cat === c.id && vInGroup(r)));
   body.innerHTML = `<div class="vlist-title">${vEsc(c.emoji)} ${vEsc(c.name)}</div><div class="chip-row vchips">${vChipsHtml()}</div>` +
     (list.length ? list.map(r => vCardHtml(r, false)).join('') : `<div class="empty-state">Nothing here yet.<br>Tap + to add your first item.</div>`) +
     `<button class="btn secondary btn-icon" data-vact="editcat" style="margin-top:14px;">${ICON.pen}<span>Edit category</span></button>`;
@@ -600,7 +665,7 @@ function vOpenReset() {
 function vOpenMenu() {
   vModal(`<h3>Data options</h3>
     <div class="settings-link" data-vm="cats"><div><div class="row-label">Categories</div><div class="row-sub">Add, rename or remove</div></div><span class="chev">&#8250;</span></div>
-    <div class="settings-link" data-vm="people"><div><div class="row-label">People</div><div class="row-sub">Family members used as tags</div></div><span class="chev">&#8250;</span></div>
+    <div class="settings-link" data-vm="labels"><div><div class="row-label">Linked-to labels</div><div class="row-sub">Rename, merge or remove</div></div><span class="chev">&#8250;</span></div>
     <div class="row"><div><div class="row-label">Keep unlocked on this device</div><div class="row-sub">Skip the passphrase here. Lock now to turn off.</div></div>
       <label class="switch"><input type="checkbox" id="vmRemember" ${V.remember ? 'checked' : ''}><span class="slider"></span></label></div>
     <div class="settings-link" data-vm="pass"><div><div class="row-label">Change passphrase</div></div><span class="chev">&#8250;</span></div>
@@ -714,34 +779,172 @@ function vOpenCatEditor(id) {
   };
 }
 
-// ---- people ----
-function vOpenPeople() {
-  const row = (p) => `<div class="field-row vprow" data-pid="${p.id}"><div class="field"><input class="vinput" type="text" value="${vEsc(p.name)}" placeholder="Name"></div><button class="icon-btn vpdel" title="Remove" type="button">&times;</button></div>`;
-  vModal(`<h3>People</h3><div class="row-sub" style="margin-bottom:12px;">Tag items with who they belong to, then filter by person.</div>
-    <div id="vpList">${V.cfg.people.map(row).join('')}</div>
-    <button class="btn secondary" id="vpAdd" type="button">+ Add person</button>
+// ---- linked-to labels ----
+function vOpenLabels() {
+  const gs = vGroups();
+  const row = (g) => `<div class="field-row vprow" data-gkey="${vEsc(g.key)}"><div class="field"><input class="vinput" type="text" value="${vEsc(g.name)}"><div class="row-sub">${g.count} item${g.count === 1 ? '' : 's'}</div></div><button class="icon-btn vpdel" title="Unlink" type="button">&times;</button></div>`;
+  vModal(`<h3>Linked-to labels</h3><div class="row-sub" style="margin-bottom:12px;">Rename to fix or merge labels (give two the same name). Remove to unlink. New labels appear when you save an item with one.</div>
+    <div id="vpList">${gs.length ? gs.map(row).join('') : '<div class="empty-state" style="padding:14px;">No labels yet</div>'}</div>
     <button class="btn" id="vpSave" style="margin-top:12px;">Save</button>
     <button class="btn secondary" id="vpCancel" style="margin-top:8px;">Cancel</button>`);
   const list = $v('vpList');
-  const bindDel = () => list.querySelectorAll('.vpdel').forEach(b => b.onclick = () => b.closest('.vprow').remove());
-  bindDel();
-  $v('vpAdd').onclick = () => { list.insertAdjacentHTML('beforeend', row({ id: '', name: '' })); bindDel(); list.lastElementChild.querySelector('input').focus(); };
+  list.querySelectorAll('.vpdel').forEach(b => b.onclick = () => b.closest('.vprow').remove());
   $v('vpCancel').onclick = vModalClose;
-  $v('vpSave').onclick = async () => {
-    const next = [];
-    list.querySelectorAll('.vprow').forEach(r => { const name = r.querySelector('input').value.trim(); if (name) next.push({ id: r.dataset.pid || vId('p_'), name }); });
-    const gone = new Set(V.cfg.people.map(p => p.id).filter(id => !next.some(n => n.id === id)));
-    V.cfg.people = next; if (V.person !== 'all' && !next.some(p => p.id === V.person)) V.person = 'all';
-    await vSaveCfg();
-    for (const r of V.records.filter(r => gone.has(r.person))) await vSaveRecord(Object.assign({}, r, { person: null }), r.id);
-    vModalClose(); vRenderAll();
+  $v('vpSave').onclick = () => {
+    const rename = new Map();
+    list.querySelectorAll('.vprow').forEach(r => rename.set(r.dataset.gkey, r.querySelector('input').value.trim()));
+    V.records.forEach(r => {
+      const cur = vGroupOf(r).trim(), k = vGroupKey(cur); if (!k) return;
+      const next = rename.has(k) ? rename.get(k) : '';
+      if (next !== cur || r.person) vSaveRecord(Object.assign({}, r, { group: next, person: null }), r.id);
+    });
+    const keep = new Set(Array.from(rename.values()).map(vGroupKey));
+    if (V.group !== 'all' && !keep.has(V.group)) V.group = 'all';
+    vModalClose();
+  };
+}
+function vOpenMoreGroups() {
+  const gs = vGroups();
+  vModal(`<h3>Linked to</h3><div class="row-sub" style="margin-bottom:12px;">Most used first.</div>
+    <div class="chip-row">${gs.map(g => `<button type="button" class="chip ${V.group === g.key ? 'selected' : ''}" data-vgroup="${vEsc(g.key)}">${vEsc(g.name)} \u00B7 ${g.count}</button>`).join('')}</div>
+    <button class="btn secondary" id="vmgClose" style="margin-top:16px;">Close</button>`);
+  $v('vmgClose').onclick = vModalClose;
+}
+
+// ---- add chooser + templates ----
+const V_QUICK = [
+  ['IMEI 1', 'number', { mask: false }], ['IMEI 2', 'number', { mask: false }], ['Serial no.', 'text'],
+  ['Purchased on', 'date', { showAge: true }], ['Warranty till', 'date', { kind: 'expiry' }],
+  ['Case number', 'text'], ['Court', 'text'], ['CNR number', 'text'], ['Next hearing', 'date', { kind: 'expiry' }], ['Advocate', 'text'],
+  ['Registration no.', 'text'], ['Chassis no.', 'text'], ['Insurance till', 'date', { kind: 'expiry' }], ['PUC till', 'date', { kind: 'expiry' }],
+  ['Policy no.', 'text'], ['Insurer', 'text'], ['Renewal date', 'date', { kind: 'expiry' }],
+  ['Phone', 'phone'], ['Date of birth', 'date', { kind: 'birthday' }]
+];
+const V_ENTRY_TEMPLATES = {
+  phone:   { title: 'Phone / device', emoji: '\uD83D\uDCF1', cat: 'Phones & devices', fields: ['IMEI 1', 'IMEI 2', 'Serial no.', 'Purchased on', 'Warranty till'] },
+  court:   { title: 'Court case', emoji: '\u2696\uFE0F', cat: 'Court cases', fields: ['Case number', 'Court', 'CNR number', 'Next hearing', 'Advocate'] },
+  vehicle: { title: 'Vehicle', emoji: '\uD83D\uDE97', cat: 'Vehicles', fields: ['Registration no.', 'Insurance till', 'PUC till', 'Chassis no.'] },
+  policy:  { title: 'Insurance policy', emoji: '\uD83D\uDEE1\uFE0F', cat: 'Insurance policies', fields: ['Policy no.', 'Insurer', 'Renewal date'] }
+};
+function vNewField(label) {
+  const q = V_QUICK.find(x => x[0] === label), type = q ? q[1] : 'text', o = (q && q[2]) || {};
+  return { id: vId('f'), label: q ? label : '', type, value: '', kind: o.kind || 'plain', showAge: !!o.showAge, mask: o.mask !== undefined ? o.mask : !!V_MASK_DEFAULT[type] };
+}
+function vEnsureCat(name, emoji) {
+  const f = V.cfg.cats.find(c => c.name.toLowerCase() === name.toLowerCase());
+  if (f) return f.id;
+  const c = { id: vId('c_'), name, emoji, defType: 'text', defLabel: '', defKind: 'plain' };
+  V.cfg.cats.push(c); vSaveCfg(); return c.id;
+}
+function vOpenAddChooser(presetCat) {
+  vModal(`<h3>Add to Data</h3>
+    <div class="vchoose" data-vch="single"><div class="n">Single value</div><div class="s">One number or date, e.g. a PAN or a date of birth</div></div>
+    <div class="vchoose" data-vch="entry"><div class="n">Entry with several fields</div><div class="s">e.g. a phone with IMEIs and warranty, or a court case</div></div>
+    <div class="group-header" style="cursor:default;">Quick templates</div>
+    <div class="chip-row">${Object.keys(V_ENTRY_TEMPLATES).map(k => `<button type="button" class="chip" data-vch="${k}">${V_ENTRY_TEMPLATES[k].emoji} ${V_ENTRY_TEMPLATES[k].title}</button>`).join('')}</div>
+    <button class="btn secondary" id="vchCancel" style="margin-top:16px;">Cancel</button>`);
+  V.editing = { preset: presetCat };
+  $v('vchCancel').onclick = vModalClose;
+}
+const vGroupDatalist = () => '<datalist id="vGroups">' + vGroups().map(g => `<option value="${vEsc(g.name)}"></option>`).join('') + '</datalist>';
+const vCurGroupName = () => (V.group !== 'all' ? vGroupName(V.group) : '');
+
+// ---- entry editor (several fields) ----
+const vKindOpts = (k) => `<option value="plain" ${k === 'plain' ? 'selected' : ''}>Just a date</option><option value="expiry" ${k === 'expiry' ? 'selected' : ''}>Deadline / expiry (remind me)</option><option value="birthday" ${k === 'birthday' ? 'selected' : ''}>Birthday / anniversary</option>`;
+function vFieldRowHtml(f, i) {
+  const date = f.type === 'date';
+  return `<div class="vfld" data-i="${i}">
+    <div class="field-row" style="align-items:flex-start;">
+      <div class="field"><input class="vinput vf-label" type="text" value="${vEsc(f.label)}" placeholder="Label, e.g. IMEI 1"></div>
+      <div class="field" style="flex:0 0 112px;"><select class="vinput vf-type">${Object.keys(V_TYPES).map(k => `<option value="${k}" ${f.type === k ? 'selected' : ''}>${V_TYPES[k]}</option>`).join('')}</select></div>
+      <button type="button" class="icon-btn vf-del" title="Remove field">&times;</button>
+    </div>
+    <input class="vinput vf-value" type="${date ? 'date' : 'text'}" value="${vEsc(f.value)}" placeholder="Value" inputmode="${f.type === 'aadhaar' || f.type === 'number' ? 'numeric' : f.type === 'phone' ? 'tel' : 'text'}">
+    <div class="vfld-opts">${date
+      ? `<select class="vinput vf-kind">${vKindOpts(f.kind)}</select>${f.kind !== 'birthday' ? `<label class="vcheck"><input type="checkbox" class="vf-age" ${f.showAge ? 'checked' : ''}> Show age / time since</label>` : ''}`
+      : `<label class="vcheck"><input type="checkbox" class="vf-mask" ${f.mask ? 'checked' : ''}> Hide until tapped</label>`}</div>
+  </div>`;
+}
+function vSyncFields() {
+  const out = [];
+  $v('veFields').querySelectorAll('.vfld').forEach((row, i) => {
+    const q = (s) => row.querySelector(s);
+    out.push({ id: V.editing.fields[i].id, label: q('.vf-label').value, type: q('.vf-type').value, value: q('.vf-value').value,
+      kind: q('.vf-kind') ? q('.vf-kind').value : 'plain', showAge: q('.vf-age') ? q('.vf-age').checked : false, mask: q('.vf-mask') ? q('.vf-mask').checked : false });
+  });
+  V.editing.fields = out;
+}
+const vRenderFields = () => { $v('veFields').innerHTML = V.editing.fields.map(vFieldRowHtml).join(''); };
+
+function vOpenEntry(id, tplKey, presetCat) {
+  if (!V.cfg.cats.length && !tplKey) { vToast('Create a category first'); vOpenCatEditor(null); return; }
+  const r = id ? V.records.find(x => x.id === id) : null;
+  const tpl = tplKey ? V_ENTRY_TEMPLATES[tplKey] : null;
+  const catId = r ? r.cat : tpl ? vEnsureCat(tpl.cat, tpl.emoji) : (vCat(presetCat) ? presetCat : V.cfg.cats[0].id);
+  const fields = r ? (r.fields || []).map(f => Object.assign({}, f)) : tpl ? tpl.fields.map(vNewField) : [vNewField('')];
+  V.editing = { id, fields, entry: true };
+  vModal(`<h3>${id ? 'Edit entry' : 'New entry'}</h3>
+    <div class="field"><label>Title</label><input class="vinput" id="veTitle" type="text" autocomplete="off" value="${vEsc(r ? r.label : (tpl ? '' : ''))}" placeholder="${tpl ? vEsc(tpl.title === 'Court case' ? 'e.g. Property case' : tpl.title === 'Phone / device' ? 'e.g. Redmi Note 12' : 'e.g. ' + tpl.title) : 'e.g. Redmi Note 12, Property case'}"></div>
+    <div class="field-row">
+      <div class="field"><label>Category</label><select class="vinput" id="veCat">${V.cfg.cats.map(c => `<option value="${c.id}" ${c.id === catId ? 'selected' : ''}>${vEsc(c.emoji)} ${vEsc(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Linked to</label><input class="vinput" id="veGroup" list="vGroups" type="text" autocomplete="off" value="${vEsc(r ? vGroupOf(r) : vCurGroupName())}" placeholder="optional"></div>
+    </div>${vGroupDatalist()}
+    <div class="field"><label>Fields</label><div id="veFields"></div>
+      <div class="vquick">${V_QUICK.map(q => `<button type="button" class="chip" data-vq="${vEsc(q[0])}">+ ${vEsc(q[0])}</button>`).join('')}</div>
+      <button class="btn secondary" id="veAddField" type="button" style="margin-top:8px;">+ Add blank field</button></div>
+    <div class="field"><label>Note (optional)</label><textarea class="vinput" id="veNote" rows="2" placeholder="Anything to remember">${vEsc(r ? r.note : '')}</textarea></div>
+    <label class="vcheck"><input type="checkbox" id="vePin" ${r && r.pin ? 'checked' : ''}> Pin to top</label>
+    <div class="vwarn" id="veErr"></div>
+    <button class="btn" id="veSave" style="margin-top:6px;">Save</button>
+    ${id ? '<button class="btn danger" id="veDel" style="margin-top:8px;">Delete</button>' : ''}
+    <button class="btn secondary" id="veCancel" style="margin-top:8px;">Cancel</button>`);
+  vRenderFields();
+  const box = $v('veFields');
+  box.addEventListener('change', (e) => {
+    const row = e.target.closest('.vfld'); if (!row) return;
+    const i = +row.dataset.i, prev = V.editing.fields[i].type;
+    vSyncFields();
+    const f = V.editing.fields[i];
+    if (e.target.classList.contains('vf-type') && f.type !== prev) { f.value = ''; f.kind = 'plain'; f.showAge = false; f.mask = !!V_MASK_DEFAULT[f.type]; vRenderFields(); }
+    else if (e.target.classList.contains('vf-kind')) vRenderFields();
+  });
+  box.addEventListener('click', (e) => {
+    const d = e.target.closest('.vf-del'); if (!d) return;
+    vSyncFields(); V.editing.fields.splice(+d.closest('.vfld').dataset.i, 1); vRenderFields();
+  });
+  $v('vaultModalBody').querySelectorAll('[data-vq]').forEach(b => b.onclick = () => {
+    vSyncFields();
+    const blank = V.editing.fields.length === 1 && !V.editing.fields[0].label && !V.editing.fields[0].value;
+    if (blank) V.editing.fields = [];
+    V.editing.fields.push(vNewField(b.dataset.vq)); vRenderFields();
+  });
+  $v('veAddField').onclick = () => { vSyncFields(); V.editing.fields.push(vNewField('')); vRenderFields(); const l = box.querySelectorAll('.vf-label'); l[l.length - 1].focus(); };
+  $v('veCancel').onclick = vModalClose;
+  $v('veSave').onclick = async () => {
+    const err = $v('veErr'); err.textContent = ''; vSyncFields();
+    const title = $v('veTitle').value.trim();
+    if (!title) { err.textContent = 'Give the entry a title.'; return; }
+    const fields = V.editing.fields.filter(f => String(f.value).trim()).map(f => ({
+      id: f.id, label: f.label.trim() || 'Field', type: f.type, value: vNormalize(f.type, f.value),
+      kind: f.type === 'date' ? f.kind : 'plain', showAge: f.type === 'date' && f.kind !== 'birthday' ? !!f.showAge : false, mask: f.type === 'date' ? false : !!f.mask }));
+    if (!fields.length) { err.textContent = 'Fill in at least one field.'; return; }
+    const rec = { mode: 'entry', cat: $v('veCat').value, group: $v('veGroup').value.trim(), person: null, label: title, fields,
+      note: $v('veNote').value.trim(), pin: $v('vePin').checked, ts: Date.now(), uses: r ? r.uses || 0 : 0, last: r ? r.last || 0 : 0 };
+    await vSaveRecord(rec, id); vModalClose();
+  };
+  if (id) $v('veDel').onclick = () => {
+    vModal(`<h3>Delete this entry?</h3><div class="row-sub" style="margin-bottom:14px;">${vEsc(r.label)} and all its fields will be permanently removed.</div>
+      <button class="btn danger" id="vdYes">Delete</button><button class="btn secondary" id="vdNo" style="margin-top:8px;">Cancel</button>`);
+    $v('vdNo').onclick = () => vOpenEntry(id);
+    $v('vdYes').onclick = () => { VAULT_COL.doc(id).delete().catch(console.error); vModalClose(); vToast('Deleted'); };
   };
 }
 
-// ---- record editor ----
+// ---- single-value editor ----
 function vOpenRecord(id, presetCat) {
   if (!V.cfg.cats.length) { vToast('Create a category first'); vOpenCatEditor(null); return; }
   const r = id ? V.records.find(x => x.id === id) : null;
+  if (r && r.mode === 'entry') return vOpenEntry(id);
   const cat = vCat(r ? r.cat : presetCat) || V.cfg.cats[0];
   const type = r ? r.type : cat.defType;
   const kind = r ? (r.kind || 'plain') : (cat.defKind || 'plain');
@@ -749,18 +952,15 @@ function vOpenRecord(id, presetCat) {
   vModal(`<h3>${id ? 'Edit item' : 'New item'}</h3>
     <div class="field-row">
       <div class="field"><label>Category</label><select class="vinput" id="vrCat">${V.cfg.cats.map(c => `<option value="${c.id}" ${c.id === cat.id ? 'selected' : ''}>${vEsc(c.emoji)} ${vEsc(c.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Person</label><select class="vinput" id="vrPerson"><option value="">\u2014 none \u2014</option>${V.cfg.people.map(p => `<option value="${p.id}" ${r && r.person === p.id || (!r && V.person === p.id) ? 'selected' : ''}>${vEsc(p.name)}</option>`).join('')}<option value="__new">+ New person\u2026</option></select></div>
-    </div>
-    <div class="field hidden" id="vrNewWrap"><label>New person\u2019s name</label><input class="vinput" id="vrNew" type="text" autocomplete="off"></div>
+      <div class="field"><label>Linked to</label><input class="vinput" id="vrGroup" list="vGroups" type="text" autocomplete="off" value="${vEsc(r ? vGroupOf(r) : vCurGroupName())}" placeholder="optional, e.g. Anu"></div>
+    </div>${vGroupDatalist()}
     <div class="field-row">
       <div class="field"><label>Label</label><input class="vinput" id="vrLabel" type="text" value="${vEsc(r ? r.label : cat.defLabel)}" placeholder="e.g. PAN"></div>
       <div class="field"><label>Type</label><select class="vinput" id="vrType">${Object.keys(V_TYPES).map(k => `<option value="${k}" ${type === k ? 'selected' : ''}>${V_TYPES[k]}</option>`).join('')}</select></div>
     </div>
     <div class="field"><label>Value</label><input class="vinput" id="vrValue" autocomplete="off"></div>
-    <div class="field hidden" id="vrKindWrap"><label>This date is a</label><select class="vinput" id="vrKind">
-      <option value="birthday" ${kind === 'birthday' ? 'selected' : ''}>Birthday / anniversary (repeats yearly)</option>
-      <option value="expiry" ${kind === 'expiry' ? 'selected' : ''}>Expiry / renewal (remind me before)</option>
-      <option value="plain" ${kind === 'plain' ? 'selected' : ''}>Just a date</option></select></div>
+    <div class="field hidden" id="vrKindWrap"><label>This date is a</label><select class="vinput" id="vrKind">${vKindOpts(kind)}</select></div>
+    <label class="vcheck hidden" id="vrAgeWrap"><input type="checkbox" id="vrAge" ${r && r.showAge ? 'checked' : ''}> Show age / time since this date</label>
     <div class="field"><label>Note (optional)</label><textarea class="vinput" id="vrNote" rows="2" placeholder="Anything to remember">${vEsc(r ? r.note : '')}</textarea></div>
     <label class="vcheck"><input type="checkbox" id="vrMask" ${(r ? r.mask : V_MASK_DEFAULT[type]) ? 'checked' : ''}> Hide value until I tap the eye</label>
     <label class="vcheck"><input type="checkbox" id="vrPin" ${r && r.pin ? 'checked' : ''}> Pin to top</label>
@@ -773,20 +973,21 @@ function vOpenRecord(id, presetCat) {
   const applyType = () => {
     const t = $v('vrType').value;
     valEl.type = t === 'date' ? 'date' : 'text';
-    valEl.setAttribute('inputmode', t === 'aadhaar' ? 'numeric' : t === 'phone' ? 'tel' : 'text');
+    valEl.setAttribute('inputmode', t === 'aadhaar' || t === 'number' ? 'numeric' : t === 'phone' ? 'tel' : 'text');
     valEl.setAttribute('autocapitalize', t === 'pan' ? 'characters' : 'off');
     valEl.placeholder = t === 'pan' ? 'ABCDE1234F' : t === 'aadhaar' ? '12-digit number' : '';
     $v('vrKindWrap').classList.toggle('hidden', t !== 'date');
+    $v('vrAgeWrap').classList.toggle('hidden', !(t === 'date' && $v('vrKind').value !== 'birthday'));
   };
   applyType();
   valEl.value = r ? r.value : '';
+  $v('vrKind').onchange = applyType;
   $v('vrType').onchange = () => { applyType(); valEl.value = ''; $v('vrMask').checked = !!V_MASK_DEFAULT[$v('vrType').value]; };
   $v('vrCat').onchange = () => {                       // pre-fill from category when starting a new item
     if (r) return;
     const c = vCat($v('vrCat').value); $v('vrLabel').value = c.defLabel; $v('vrType').value = c.defType; $v('vrKind').value = c.defKind || 'plain';
     applyType(); valEl.value = ''; $v('vrMask').checked = !!V_MASK_DEFAULT[c.defType];
   };
-  $v('vrPerson').onchange = () => { const nw = $v('vrPerson').value === '__new'; $v('vrNewWrap').classList.toggle('hidden', !nw); if (nw) $v('vrNew').focus(); };
   $v('vrCancel').onclick = vModalClose;
   $v('vrSave').onclick = async () => {
     const err = $v('vrErr'); err.textContent = '';
@@ -794,15 +995,10 @@ function vOpenRecord(id, presetCat) {
     if (!val) { err.textContent = 'Enter a value.'; return; }
     const warn = vValidate(t, val);
     if (warn && V.editing.warned !== val) { V.editing.warned = val; err.textContent = warn; return; }
-    let person = $v('vrPerson').value;
-    if (person === '__new') {
-      const nm = $v('vrNew').value.trim();
-      if (!nm) { err.textContent = 'Enter the new person\u2019s name.'; return; }
-      person = vId('p_'); V.cfg.people.push({ id: person, name: nm }); await vSaveCfg();
-    }
-    const c = vCat($v('vrCat').value);
-    const rec = { cat: c.id, person: person || null, label: $v('vrLabel').value.trim() || c.defLabel || c.name, type: t, value: val,
-      kind: t === 'date' ? $v('vrKind').value : 'plain', note: $v('vrNote').value.trim(), mask: $v('vrMask').checked, pin: $v('vrPin').checked, ts: Date.now() };
+    const c = vCat($v('vrCat').value), k = t === 'date' ? $v('vrKind').value : 'plain';
+    const rec = { cat: c.id, group: $v('vrGroup').value.trim(), person: null, label: $v('vrLabel').value.trim() || c.defLabel || c.name, type: t, value: val,
+      kind: k, showAge: t === 'date' && k !== 'birthday' ? $v('vrAge').checked : false, note: $v('vrNote').value.trim(),
+      mask: $v('vrMask').checked, pin: $v('vrPin').checked, ts: Date.now(), uses: r ? r.uses || 0 : 0, last: r ? r.last || 0 : 0 };
     await vSaveRecord(rec, id); vModalClose();
   };
   if (id) $v('vrDel').onclick = () => {
@@ -814,43 +1010,56 @@ function vOpenRecord(id, presetCat) {
 }
 
 // ---- events ----
-async function vRecordAction(act, id) {
+function vToggleReveal(key) {
+  if (V.revealed.has(key)) V.revealed.delete(key);
+  else { V.revealed.add(key); setTimeout(() => { V.revealed.delete(key); vRenderAll(); }, 20000); }
+  vRenderAll();
+}
+async function vRecordAction(act, id, fid) {
   const r = V.records.find(x => x.id === id); if (!r) return;
-  if (act === 'copy') { vToast((await vCopy(String(vCopyValue(r)))) ? 'Copied ' + r.label : 'Copy failed'); }
-  else if (act === 'reveal') {
-    if (V.revealed.has(id)) V.revealed.delete(id);
-    else { V.revealed.add(id); setTimeout(() => { V.revealed.delete(id); vRenderAll(); }, 20000); }
-    vRenderAll();
-  }
+  const f = fid && r.fields ? r.fields.find(x => x.id === fid) : null;
+  if (act === 'copy') { vBump(id, 2); vToast((await vCopy(String(vCopyValue(r)))) ? 'Copied ' + r.label : 'Copy failed'); }
+  else if (act === 'copyfield' && f) { vBump(id, 2); vToast((await vCopy(String(vCopyValue(f)))) ? 'Copied ' + f.label : 'Copy failed'); }
+  else if (act === 'reveal') { vBump(id, 1); vToggleReveal(id); }
+  else if (act === 'revealfield' && f) { vBump(id, 1); vToggleReveal(id + ':' + fid); }
   else if (act === 'share') {
-    const who = vPersonName(r.person), text = (who ? who + ' \u2013 ' : '') + r.label + ': ' + vCopyValue(r);
+    vBump(id, 1);
+    const text = vShareText(r);
     if (navigator.share) { try { await navigator.share({ text }); } catch (e) {} }
     else vToast((await vCopy(text)) ? 'Copied for sharing' : 'Copy failed');
   }
   else if (act === 'pin') vSaveRecord(Object.assign({}, r, { pin: !r.pin }), id);
-  else if (act === 'edit') vOpenRecord(id);
+  else if (act === 'edit') (r.mode === 'entry' ? vOpenEntry(id) : vOpenRecord(id));
 }
 function vHandleClick(e) {
-  const chip = e.target.closest('[data-vperson]');
-  if (chip) { V.person = chip.dataset.vperson; vRenderAll(); return; }
+  const chip = e.target.closest('[data-vgroup]');
+  if (chip) { V.group = chip.dataset.vgroup; vRenderAll(); return; }
   const tile = e.target.closest('[data-vcat]');
   if (tile) { V.cat = tile.dataset.vcat; goToView('dataList'); return; }
   const btn = e.target.closest('[data-vact]');
   if (!btn) return;
   const act = btn.dataset.vact, card = btn.closest('[data-vid]');
-  if (card) return vRecordAction(act, card.dataset.vid);
-  if (act === 'people') vOpenPeople();
+  if (card) { const fe = btn.closest('[data-vfid]'); return vRecordAction(act, card.dataset.vid, fe ? fe.dataset.vfid : null); }
+  if (act === 'moregroups') vOpenMoreGroups();
   else if (act === 'newcat') vOpenCatEditor(null);
   else if (act === 'editcat') vOpenCatEditor(V.cat);
 }
 ['view-dataHome', 'view-dataList'].forEach(id => $v(id).addEventListener('click', vHandleClick));
-$v('vFab').addEventListener('click', () => vOpenRecord(null, currentTab === 'dataList' ? V.cat : null));
+$v('vFab').addEventListener('click', () => vOpenAddChooser(currentTab === 'dataList' ? V.cat : null));
 $v('dataLink').addEventListener('click', () => goToView('dataHome'));
 $v('homeVaultCard').addEventListener('click', () => goToView('dataHome'));
 $v('vaultModal').addEventListener('click', (e) => {
   if (e.target === $v('vaultModal')) { vModalClose(); return; }
+  const gs = e.target.closest('[data-vgroup]');
+  if (gs) { V.group = gs.dataset.vgroup; vModalClose(); vRenderAll(); return; }
+  const ch = e.target.closest('[data-vch]');
+  if (ch) {
+    const preset = V.editing && V.editing.preset, k = ch.dataset.vch;
+    if (k === 'single') vOpenRecord(null, preset); else vOpenEntry(null, k === 'entry' ? null : k, preset);
+    return;
+  }
   const m = e.target.closest('[data-vm]');
-  if (m) ({ cats: vOpenCats, people: vOpenPeople, pass: vOpenPassChange, code: vOpenNewCode, reset: vOpenReset })[m.dataset.vm]();
+  if (m) ({ cats: vOpenCats, labels: vOpenLabels, pass: vOpenPassChange, code: vOpenNewCode, reset: vOpenReset })[m.dataset.vm]();
   const ec = e.target.closest('[data-vecat]');
   if (ec) vOpenCatEditor(ec.dataset.vecat);
 });
