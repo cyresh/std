@@ -1082,6 +1082,11 @@ function renderCreatorChips(container, selected, onSelect) {
 // ================= Settings =================
 const CHANGELOG = [
   {
+    version: '1.6.1', date: 'Nov 2026', notes: [
+      'Data: category title now stays pinned at the top while scrolling; cards show the linked name in blue capitals instead of repeating the label; filter chips stay on one swipeable row'
+    ]
+  },
+  {
     version: '1.6.0', date: 'Nov 2026', notes: [
       'Data: entries with several fields (phone with IMEIs and warranty, court case with hearing date, vehicle, policy) alongside single values',
       'Data: filter chips now form automatically from the labels you use most; link any item to a person, device or case',

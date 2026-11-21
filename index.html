@@ -118,9 +118,9 @@
   textarea.vinput{ resize:vertical; min-height:56px; }
   .vbar{ display:flex; gap:8px; align-items:center; margin-bottom:10px; }
   .vbar .vinput{ flex:1; min-width:0; }
-  .vchips{ flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px; margin-bottom:6px; scrollbar-width:none; }
-  .vchips::-webkit-scrollbar{ display:none; }
-  .vchips .chip{ padding:8px 14px; white-space:nowrap; flex-shrink:0; }
+  .chip-row.vchips{ flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px; margin-bottom:6px; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .chip-row.vchips::-webkit-scrollbar{ display:none; }
+  .chip-row.vchips .chip{ padding:8px 14px; white-space:nowrap; flex-shrink:0; }
   .chip.emo{ padding:6px 10px; font-size:1.1em; }
   .vtiles{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .vtile{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:16px 14px; cursor:pointer; min-height:92px; }
@@ -133,6 +133,7 @@
   .vrec-main{ cursor:pointer; }
   .vrec-top{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:.78em; color:var(--text-dim); }
   .vrec-label{ font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
+  .vrec-name{ font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--accent); }
   .vrec-person, .vrec-cat{ background:var(--surface-2); border-radius:10px; padding:2px 8px; }
   .vrec-pin{ color:var(--warn); }
   .vrec-val{ font-size:1.18em; font-weight:600; margin-top:4px; word-break:break-all; letter-spacing:.3px; }
@@ -172,7 +173,8 @@
   .vchoose{ background:var(--surface-2); border:1px solid var(--border); border-radius:14px; padding:14px 16px; margin-bottom:10px; cursor:pointer; }
   .vchoose:active{ background:var(--border); }
   .vchoose .n{ font-weight:700; } .vchoose .s{ font-size:.82em; color:var(--text-dim); margin-top:3px; }
-  .vlist-title{ font-size:1.25em; font-weight:800; margin:2px 2px 12px; }
+  #app.tab-dataHome, #app.tab-dataList{ background:var(--bg); }
+  .vlist-title{ position:sticky; top:-16px; z-index:5; background:var(--bg); font-size:1.25em; font-weight:800; margin:-16px -16px 10px; padding:16px 18px 10px; border-bottom:1px solid var(--border); }
   .btn:disabled{ opacity:.4; cursor:not-allowed; }
   .vcode span{ display:inline-block; }
   .vcode{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.98em; font-weight:700; letter-spacing:.8px; background:var(--surface-2); border:1px dashed var(--border); border-radius:12px; padding:14px 8px; margin-bottom:12px; user-select:all; word-break:break-all; text-align:center; }

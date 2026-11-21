@@ -504,9 +504,18 @@ function vShareText(r) {
   if (r.mode === 'entry') return r.label + (g ? ' (' + g + ')' : '') + '\n' + (r.fields || []).map(f => f.label + ': ' + vCopyValue(f)).join('\n');
   return (g ? g + ' \u2013 ' : '') + r.label + ': ' + vCopyValue(r);
 }
-function vCardHtml(r, showCat) {
+function vCardHtml(r, showCat, o) {                      // o: { hideLabel, hideName }
+  o = o || {};
   const g = vGroupOf(r), c = vCat(r.cat);
-  const head = `<div class="vrec-top"><span class="vrec-label">${vEsc(r.label)}</span>${g ? `<span class="vrec-person">${vEsc(g)}</span>` : ''}${showCat && c ? `<span class="vrec-cat">${vEsc(c.emoji)} ${vEsc(c.name)}</span>` : ''}${r.pin ? '<span class="vrec-pin">\u2605</span>' : ''}</div>`;
+  let title;
+  if (r.mode === 'entry') {                              // entry: title in blue, linked-to small & grey
+    title = `<span class="vrec-name">${vEsc(r.label)}</span>` + (g && !o.hideName ? `<span class="vrec-label">${vEsc(g)}</span>` : '');
+  } else if (g && !o.hideName) {                         // single: linked name in blue, label (when wanted) in grey
+    title = `<span class="vrec-name">${vEsc(g)}</span>` + (o.hideLabel ? '' : `<span class="vrec-label">${vEsc(r.label)}</span>`);
+  } else {                                               // no name to show: fall back to the label
+    title = `<span class="${o.hideName ? 'vrec-name' : 'vrec-label'}">${vEsc(r.label)}</span>`;
+  }
+  const head = `<div class="vrec-top">${title}${showCat && c ? `<span class="vrec-cat">${vEsc(c.emoji)} ${vEsc(c.name)}</span>` : ''}${r.pin ? '<span class="vrec-pin">\u2605</span>' : ''}</div>`;
   const actions = (reveal) => `<div class="vrec-actions">${reveal}<button class="vbtn" data-vact="share" title="Share">${ICON.share}</button><button class="vbtn ${r.pin ? 'on' : ''}" data-vact="pin" title="Pin to top">${ICON.star}</button><button class="vbtn" data-vact="edit" title="Edit">${ICON.pen}</button></div>`;
   if (r.mode === 'entry') {
     const rows = (r.fields || []).map(f => {
@@ -542,7 +551,7 @@ function vHomeContent() {
     const cats = V.cfg.cats.concat([{ id: '__other', name: 'Other', emoji: '\uD83D\uDCC1' }]);
     return cats.map(c => {
       const list = vSortRecs(mine.filter(r => (vCat(r.cat) ? r.cat : '__other') === c.id));
-      return list.length ? `<div class="group-header" style="cursor:default;">${vEsc(c.emoji)} ${vEsc(c.name)}</div>` + list.map(r => vCardHtml(r, false)).join('') : '';
+      return list.length ? `<div class="group-header" style="cursor:default;">${vEsc(c.emoji)} ${vEsc(c.name)}</div>` + list.map(r => vCardHtml(r, false, { hideName: true })).join('') : '';
     }).join('');
   }
   const pinned = vSortRecs(V.records.filter(r => r.pin));
@@ -561,7 +570,7 @@ function renderDataList() {
   if (!V.key || !c) { body.innerHTML = ''; return; }
   const list = vSortRecs(V.records.filter(r => r.cat === c.id && vInGroup(r)));
   body.innerHTML = `<div class="vlist-title">${vEsc(c.emoji)} ${vEsc(c.name)}</div><div class="chip-row vchips">${vChipsHtml()}</div>` +
-    (list.length ? list.map(r => vCardHtml(r, false)).join('') : `<div class="empty-state">Nothing here yet.<br>Tap + to add your first item.</div>`) +
+    (list.length ? list.map(r => vCardHtml(r, false, { hideLabel: true })).join('') : `<div class="empty-state">Nothing here yet.<br>Tap + to add your first item.</div>`) +
     `<button class="btn secondary btn-icon" data-vact="editcat" style="margin-top:14px;">${ICON.pen}<span>Edit category</span></button>`;
 }
 

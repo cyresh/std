@@ -12,6 +12,7 @@ A simple cloud-synced to-do app with three workload tabs (Simple / Medium / Heav
 - **Data vault** (Settings → Data) — a private, end-to-end encrypted place for things you reuse: birthdays, PAN, Aadhaar, school IDs, phone IMEIs, court case numbers, policy and vehicle numbers and more
   - **Single values** (one number or date) and **entries with several fields** (e.g. a phone: IMEI 1, IMEI 2, serial, purchased on, warranty till), with quick templates for phone/device, court case, vehicle and insurance policy
   - Organised by category. Any item can be given an optional *Linked to* label (a person, device, case…); the **filter chips are formed automatically** from the labels you use and open most, with *More…* for the rest
+  - Inside a category the title stays pinned at the top while you scroll; cards are headed by the linked name in blue capitals (entries by their title), without repeating the label
   - Tap a value (or one field of an entry) to copy it, hide values behind an eye icon, share as text, pin favourites
   - Dates can show exact age / time since as `46y, 5m, 18d` (always for birthdays, or any date marked *Show age*), and birthdays and deadlines (hearings, warranty, renewals) appear under *Dates to remember* on Home while the vault is unlocked
 - Google sign-in, shared 6-digit PIN (asked once per day per device), dark/light theme
@@ -66,7 +67,7 @@ In Google Cloud Console → **APIs & Services → Credentials**, open the browse
 2. **Settings → Pages** → Source: **Deploy from a branch** → `main`, folder `/ (root)`.
 3. The app is served at https://cyresh.github.io/std/ within a minute or two.
 
-**Every time you deploy changes:** bump `CACHE_VERSION` in `sw.js` (e.g. `std-v7` → `std-v8`) so installed devices pick up the new files. Reload the app twice after deploying.
+**Every time you deploy changes:** bump `CACHE_VERSION` in `sw.js` (e.g. `std-v8` → `std-v9`) so installed devices pick up the new files. Reload the app twice after deploying.
 
 ## How loading stays fast
 - `sw.js` caches the app files and the pinned Firebase SDK, so repeat launches don't wait on the network.
